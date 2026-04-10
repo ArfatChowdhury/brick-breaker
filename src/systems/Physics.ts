@@ -1,4 +1,6 @@
 import { Dimensions } from 'react-native';
+import Ball from '../components/Ball';
+import PowerUpComponent from '../components/PowerUp';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -8,12 +10,17 @@ const Physics = (entities: any, { time, dispatch }: any) => {
 
   if (!paddle || !scoreBoard) return entities;
 
+  // 0. Smooth Paddle Lerp
+  if (paddle.targetX !== undefined) {
+    const lerpFactor = 0.2; // Adjust for smoothness
+    paddle.position[0] += (paddle.targetX - paddle.position[0]) * lerpFactor;
+  }
+
   // 1. Timer Cleanups (Power-Up expiration)
   const currentTime = Date.now();
   if (scoreBoard.powerUpState.WIDE && currentTime > scoreBoard.powerUpState.WIDE) {
     // Reset paddle size
-    const { width: SCREEN_WIDTH } = Dimensions.get('window');
-    paddle.size[0] = SCREEN_WIDTH * 0.25; 
+    paddle.size[0] = SCREEN_WIDTH * 0.25;
     delete scoreBoard.powerUpState.WIDE;
   }
   if (scoreBoard.powerUpState.FIRE && currentTime > scoreBoard.powerUpState.FIRE) {
@@ -37,14 +44,17 @@ const Physics = (entities: any, { time, dispatch }: any) => {
       if (ball.position[0] - ball.radius <= 0) {
         ball.position[0] = ball.radius;
         ball.velocity[0] *= -1;
+        dispatch({ type: 'wall-hit' });
       } else if (ball.position[0] + ball.radius >= SCREEN_WIDTH) {
         ball.position[0] = SCREEN_WIDTH - ball.radius;
         ball.velocity[0] *= -1;
+        dispatch({ type: 'wall-hit' });
       }
 
       if (ball.position[1] - ball.radius <= 0) {
         ball.position[1] = ball.radius;
         ball.velocity[1] *= -1;
+        dispatch({ type: 'wall-hit' });
       }
 
       // Bottom (Lose Life/Ball)
@@ -53,6 +63,7 @@ const Physics = (entities: any, { time, dispatch }: any) => {
           delete entities[key];
         } else {
           scoreBoard.lives -= 1;
+          dispatch({ type: 'lose-life' });
           if (scoreBoard.lives <= 0) {
             dispatch({ type: 'game-over' });
             ball.velocity = [0, 0];
@@ -61,8 +72,7 @@ const Physics = (entities: any, { time, dispatch }: any) => {
             ball.position = [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50];
             ball.velocity = [4, -5];
             // Reset buffs on death
-            const { width: SCREEN_WIDTH_RESET } = Dimensions.get('window');
-            paddle.size[0] = SCREEN_WIDTH_RESET * 0.25;
+            paddle.size[0] = SCREEN_WIDTH * 0.25;
             scoreBoard.powerUpState = {};
           }
         }
@@ -84,6 +94,7 @@ const Physics = (entities: any, { time, dispatch }: any) => {
         ball.position[1] = paddleY - paddleH / 2 - ball.radius - 1;
         const hitPos = (ball.position[0] - paddleX) / (paddleW / 2);
         ball.velocity[0] = hitPos * 5;
+        dispatch({ type: 'paddle-hit' });
       }
 
       // 3. Brick Collisions (Per Ball)
@@ -116,15 +127,19 @@ const Physics = (entities: any, { time, dispatch }: any) => {
               if (brick.type === 'stone' && !scoreBoard.powerUpState.FIRE) {
                 if (hitSide === 'TOP') {
                   brick.hp -= 1;
+                  dispatch({ type: 'brick-hit' });
                   if (brick.hp <= 0) {
                     brick.status = false;
                     scoreBoard.score += 50;
                     attemptPowerUpSpawn(entities, brick.position);
                   }
+                } else {
+                  dispatch({ type: 'wall-hit' }); // Bounce off stone side sounds like a wall
                 }
               } else {
                 brick.status = false;
                 scoreBoard.score += 10;
+                dispatch({ type: 'brick-break' });
                 attemptPowerUpSpawn(entities, brick.position);
               }
             }
@@ -151,6 +166,7 @@ const Physics = (entities: any, { time, dispatch }: any) => {
       const dy = Math.abs(pu.position[1] - paddle.position[1]);
       if (dx < paddle.size[0] / 2 && dy < paddle.size[1] / 2) {
         applyPowerUp(entities, pu.type);
+        dispatch({ type: 'powerup-collect' });
         delete entities[key];
       }
 
@@ -167,12 +183,12 @@ const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
     const types: ('WIDE' | 'MULTI' | 'FIRE' | 'LIFE')[] = ['WIDE', 'MULTI', 'FIRE', 'LIFE'];
     const type = types[Math.floor(Math.random() * types.length)];
     const id = `powerup_${Date.now()}_${Math.random()}`;
-    
+
     entities[id] = {
       position: [...position],
       size: [30, 30],
       type,
-      renderer: require('../components/PowerUp').default,
+      renderer: PowerUpComponent,
     };
   }
 };
@@ -180,7 +196,6 @@ const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
 const applyPowerUp = (entities: any, type: string) => {
   const { scoreBoard, paddle } = entities;
   const currentTime = Date.now();
-  const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
   switch (type) {
     case 'WIDE':
@@ -204,7 +219,7 @@ const applyPowerUp = (entities: any, type: string) => {
             ...original,
             position: [...original.position],
             velocity: [original.velocity[0] + (i === 1 ? -1 : 1), -Math.abs(original.velocity[1])],
-            renderer: require('../components/Ball').default,
+            renderer: Ball,
           };
         });
       });

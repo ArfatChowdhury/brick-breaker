@@ -6,6 +6,8 @@ import Brick from '../components/Brick';
 import ScoreBoard from '../components/ScoreBoard';
 import PowerUp from '../components/PowerUp';
 
+import { FLAG_LEVELS } from '../utils/levels';
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Game Constants
@@ -17,12 +19,15 @@ export const BRICK_COLS = 14;
 export const BRICK_HEIGHT = 15;
 export const BRICK_WIDTH = (SCREEN_WIDTH - 40) / BRICK_COLS;
 
-export const getEntities = () => {
+export const getEntities = (levelIndex = 0) => {
+  const level = FLAG_LEVELS[levelIndex] || FLAG_LEVELS[0];
+  
   const entities: any = {
     scoreBoard: {
       score: 0,
       lives: 3,
-      powerUpState: {}, // To track expiration times: { FIRE: timestamp, WIDE: timestamp }
+      level: levelIndex,
+      powerUpState: {},
       renderer: ScoreBoard,
     },
     paddle: {
@@ -38,27 +43,28 @@ export const getEntities = () => {
     },
   };
 
-  // Generate Bangladesh Flag
+  // Generate Flag Bricks
   for (let r = 0; r < BRICK_ROWS; r++) {
     for (let c = 0; c < BRICK_COLS; c++) {
       const brickId = `brick_${r}_${c}`;
       
-      // Determine if it's a border brick (Stone)
       const isBorder = r === 0 || r === BRICK_ROWS - 1 || c === 0 || c === BRICK_COLS - 1;
       
-      // Determine color for the flag (Bangladesh: Green with Red circle)
-      // Circle center: approx r=8, c=6 (offset slightly left as per real flag design)
-      const distToCenter = Math.sqrt(Math.pow(r - 8, 2) + Math.pow(c - 6, 2));
-      const isInCircle = distToCenter < 4;
-      
-      const brickColor = isInCircle ? '#F42A41' : '#006A4E';
+      let brickColor = level.backgroundColor;
+      const patternResult = level.pattern(r, c, BRICK_ROWS, BRICK_COLS);
+
+      if (patternResult === 'circle') brickColor = level.circleColor;
+      else if (patternResult === 'RED') brickColor = '#EE2335';
+      else if (patternResult === 'BLACK') brickColor = '#000000';
+      else if (patternResult === 'WHITE') brickColor = '#FFFFFF';
+      else if (patternResult === 'GREEN') brickColor = '#007A3D';
 
       entities[brickId] = {
         position: [
           20 + c * BRICK_WIDTH + BRICK_WIDTH / 2,
           80 + r * BRICK_HEIGHT + BRICK_HEIGHT / 2,
         ],
-        size: [BRICK_WIDTH - 2, BRICK_HEIGHT - 2], // Tighter margin for "dense" look
+        size: [BRICK_WIDTH - 2, BRICK_HEIGHT - 2],
         color: isBorder ? '#78909C' : brickColor,
         status: true,
         type: isBorder ? 'stone' : 'regular',

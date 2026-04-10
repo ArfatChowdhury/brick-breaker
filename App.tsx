@@ -7,19 +7,63 @@ import Physics from './src/systems/Physics';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { FLAG_LEVELS } from './src/utils/levels';
+
+import { playSound } from './src/utils/audio';
+
 export default function App() {
-  const [running, setRunning] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [showMenu, setShowMenu] = useState(true);
+  const [currentLevel, setCurrentLevel] = useState(0);
+  const [unlockedLevels, setUnlockedLevels] = useState([0]);
   const [go, setGo] = useState(false);
   const [win, setWin] = useState(false);
   const [gameEngine, setGameEngine] = useState<any>(null);
 
   const onEvent = (e: any) => {
-    if (e.type === 'game-over') {
-      setRunning(false);
-      setGo(true);
-    } else if (e.type === 'win') {
-      setRunning(false);
-      setWin(true);
+    switch (e.type) {
+      case 'game-over':
+        setRunning(false);
+        setGo(true);
+        playSound('lose');
+        break;
+      case 'win':
+        setRunning(false);
+        setWin(true);
+        playSound('win');
+        if (currentLevel + 1 < FLAG_LEVELS.length && !unlockedLevels.includes(currentLevel + 1)) {
+          setUnlockedLevels([...unlockedLevels, currentLevel + 1]);
+        }
+        break;
+      case 'paddle-hit':
+        playSound('hit');
+        break;
+      case 'brick-hit':
+        playSound('hit');
+        break;
+      case 'brick-break':
+        playSound('break');
+        break;
+      case 'wall-hit':
+        playSound('wall');
+        break;
+      case 'powerup-collect':
+        playSound('powerup');
+        break;
+      case 'lose-life':
+        playSound('lose');
+        break;
+    }
+  };
+
+  const startLevel = (index: number) => {
+    setCurrentLevel(index);
+    setShowMenu(false);
+    setRunning(true);
+    setWin(false);
+    setGo(false);
+    if (gameEngine) {
+      gameEngine.swap(getEntities(index));
     }
   };
 
@@ -28,29 +72,77 @@ export default function App() {
     setWin(false);
     setRunning(true);
     if (gameEngine) {
-      gameEngine.swap(getEntities());
+      gameEngine.swap(getEntities(currentLevel));
     }
+  };
+
+  const backToMenu = () => {
+    setShowMenu(true);
+    setRunning(false);
+    setWin(false);
+    setGo(false);
   };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
         <StatusBar hidden />
-        <GameEngine
-          ref={(ref) => setGameEngine(ref)}
-          style={styles.gameContainer}
-          systems={[MovePaddle, Physics]}
-          entities={getEntities()}
-          running={running}
-          onEvent={onEvent}
-        />
+        
+        <View 
+          style={[styles.gameWrapper, showMenu && { opacity: 0 }]}
+          pointerEvents={showMenu ? 'none' : 'auto'}
+        >
+          <GameEngine
+            ref={(ref) => setGameEngine(ref)}
+            style={styles.gameContainer}
+            systems={[MovePaddle, Physics]}
+            entities={getEntities(currentLevel)}
+            running={running}
+            onEvent={onEvent}
+          />
+        </View>
+
+        {showMenu && (
+          <View style={styles.menuContainer}>
+            <Text style={styles.menuTitle}>BRICK MANIA</Text>
+            <Text style={styles.menuSubtitle}>WORLD TOUR</Text>
+            <View style={styles.levelGrid}>
+              {FLAG_LEVELS.map((lvl, index) => {
+                const isUnlocked = unlockedLevels.includes(index);
+                return (
+                  <TouchableOpacity
+                    key={lvl.id}
+                    disabled={!isUnlocked}
+                    onPress={() => startLevel(index)}
+                    style={[styles.levelCard, !isUnlocked && styles.levelCardLocked]}
+                  >
+                    <View style={[styles.flagPreview, { backgroundColor: lvl.backgroundColor }]}>
+                      {!isUnlocked && <Text style={styles.lockIcon}>🔒</Text>}
+                    </View>
+                    <Text style={styles.levelName}>{lvl.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
         
         {(go || win) && (
           <View style={styles.overlay}>
-            <Text style={styles.title}>{go ? 'GAME OVER' : 'YOU WIN!'}</Text>
-            <TouchableOpacity onPress={reset} style={styles.button}>
-              <Text style={styles.buttonText}>{go ? 'TRY AGAIN' : 'PLAY AGAIN'}</Text>
-            </TouchableOpacity>
+            <Text style={styles.title}>{go ? 'GAME OVER' : 'LEVEL CLEAR!'}</Text>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity onPress={backToMenu} style={[styles.button, { backgroundColor: '#78909C' }]}>
+                <Text style={styles.buttonText}>MENU</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={reset} style={styles.button}>
+                <Text style={styles.buttonText}>{go ? 'RETRY' : 'REPLAY'}</Text>
+              </TouchableOpacity>
+              {win && currentLevel + 1 < FLAG_LEVELS.length && (
+                <TouchableOpacity onPress={() => startLevel(currentLevel + 1)} style={[styles.button, { backgroundColor: '#FFD54F' }]}>
+                  <Text style={[styles.buttonText, { color: '#000' }]}>NEXT</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         )}
       </View>
@@ -66,35 +158,92 @@ const styles = StyleSheet.create({
   gameContainer: {
     flex: 1,
   },
+  gameWrapper: {
+    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
+  menuContainer: {
+    flex: 1,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A1A',
+  },
+  menuTitle: {
+    color: '#FFD54F',
+    fontSize: 40,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  menuSubtitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    opacity: 0.7,
+    marginBottom: 40,
+    letterSpacing: 8,
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  levelCard: {
+    width: 100,
+    margin: 10,
+    alignItems: 'center',
+  },
+  levelCardLocked: {
+    opacity: 0.4,
+  },
+  flagPreview: {
+    width: 80,
+    height: 50,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  lockIcon: {
+    fontSize: 20,
+  },
+  levelName: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 48,
+    fontSize: 40,
     fontWeight: 'bold',
-    letterSpacing: 4,
     marginBottom: 40,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 15,
   },
   button: {
     backgroundColor: '#4DB6AC',
-    paddingHorizontal: 40,
-    paddingVertical: 15,
-    borderRadius: 30,
-    elevation: 5,
-    shadowColor: '#4DB6AC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 25,
   },
   buttonText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
-    letterSpacing: 2,
   },
 });

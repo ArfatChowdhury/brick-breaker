@@ -6,22 +6,17 @@ const MovePaddle = (entities: any, { touches }: any) => {
   const paddle = entities.paddle;
 
   touches
-    .filter((t: any) => t.type === 'move')
+    .filter((t: any) => t.type === 'move' || t.type === 'press')
     .forEach((t: any) => {
-      if (paddle && paddle.position) {
-        // Update x position based on touch movement delta or absolute position
-        // For simpler control, let's use absolute x of the touch
-        const newX = t.event.pageX;
+      if (paddle) {
+        let newX = t.event.pageX;
         
-        // Boundaries
+        // Boundaries for targetX
         const halfWidth = paddle.size[0] / 2;
-        if (newX - halfWidth >= 0 && newX + halfWidth <= SCREEN_WIDTH) {
-          paddle.position[0] = newX;
-        } else if (newX - halfWidth < 0) {
-          paddle.position[0] = halfWidth;
-        } else if (newX + halfWidth > SCREEN_WIDTH) {
-          paddle.position[0] = SCREEN_WIDTH - halfWidth;
-        }
+        if (newX < halfWidth) newX = halfWidth;
+        if (newX > SCREEN_WIDTH - halfWidth) newX = SCREEN_WIDTH - halfWidth;
+        
+        paddle.targetX = newX;
       }
     });
 
