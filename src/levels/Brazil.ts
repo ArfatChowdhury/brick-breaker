@@ -5,6 +5,11 @@ export const Brazil: LevelConfig = {
   id: 'BR',
   backgroundColor: '#009739',
   pattern: (r, c, rows, cols) => {
+    // Maze Gauntlet: Several horizontal stone bars with alternating entry gaps
+    if (r === 1 && c < cols - 2) return 'STONE';
+    if (r === 3 && c > 1) return 'STONE';
+    if (r === 5 && c < cols - 2) return 'STONE';
+
     const dr = Math.abs(r - rows/2);
     const dc = Math.abs(c - cols/2);
     const isDiamond = (dr / (rows/2)) + (dc / (cols/2)) < 0.8;

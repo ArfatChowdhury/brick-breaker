@@ -6,6 +6,9 @@ import { triggerHaptic } from '../utils/haptics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const MIN_VY = 3.5; // Minimum vertical speed to prevent horizontal trapping
+const LERP_SPEED = 12; // Delta-time-based lerp speed (pixels/ms)
+
 const Physics = (entities: any, { time, dispatch, events }: any) => {
   const paddle = entities.paddle;
   const scoreBoard = entities.scoreBoard;
@@ -13,34 +16,35 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   if (!paddle || !scoreBoard) return entities;
 
   // 0. Handle Events
-  if (events.length > 0) {
+  if (events && events.length > 0) {
     const launch = events.find((e: any) => e.type === 'launch');
     if (launch) {
       scoreBoard.waitingToStart = false;
       if (entities.ball_0) {
-        entities.ball_0.velocity = [5, -7];
+        entities.ball_0.velocity = [4, -8]; // Slightly steeper initial angle
       }
     }
   }
 
-  // 0. Smooth Paddle Lerp
+  // 0a. Smooth Paddle Lerp (delta-time based — feels consistent across frame rates)
   if (paddle.targetX !== undefined) {
-    const lerpFactor = 0.2; // Adjust for smoothness
-    paddle.position[0] += (paddle.targetX - paddle.position[0]) * lerpFactor;
+    const delta = time.delta || 16;
+    const t = Math.min(1, (LERP_SPEED * delta) / 1000);
+    paddle.position[0] += (paddle.targetX - paddle.position[0]) * t;
   }
 
-  // 0.1 Handle Particles (Optimized)
+  // 0b. Handle Particles
   Object.keys(entities).forEach(key => {
     if (key.startsWith('p_')) {
       const p = entities[key];
       p.position[0] += p.velocity[0];
       p.position[1] += p.velocity[1];
-      p.opacity -= 0.1; // Faster fade for performance
+      p.opacity -= 0.1;
       if (p.opacity <= 0) delete entities[key];
     }
   });
 
-  // 1. Timer Cleanups... (Keep existing logic)
+  // 1. Timer Cleanups (Power-Up expiration)
   const currentTime = Date.now();
   if (scoreBoard.powerUpState.WIDE && currentTime > scoreBoard.powerUpState.WIDE) {
     paddle.size[0] = SCREEN_WIDTH * 0.25;
@@ -59,8 +63,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   activeBallKeys.forEach(key => {
     const ball = entities[key];
 
+    // ------ WAITING TO SERVE: Lock ball to paddle ------
     if (scoreBoard.waitingToStart) {
-      // Locked to paddle
       ball.position[0] = paddle.position[0];
       ball.position[1] = paddle.position[1] - paddle.size[1] / 2 - ball.radius - 2;
       ball.velocity = [0, 0];
@@ -68,36 +72,36 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       return;
     }
 
-    // Move Ball
+    // ------ Move Ball ------
     ball.position[0] += ball.velocity[0];
     ball.position[1] += ball.velocity[1];
 
-    // Trail tracking (Only for main ball or limited for others)
+    // Trail
     if (!ball.trail) ball.trail = [];
     ball.trail.unshift([ball.position[0], ball.position[1]]);
     if (ball.trail.length > 4) ball.trail.pop();
 
-    // Wall Collisions
+    // ------ Wall Collisions ------
     if (ball.position[0] - ball.radius <= 0) {
       ball.position[0] = ball.radius;
-      ball.velocity[0] *= -1;
+      ball.velocity[0] = Math.abs(ball.velocity[0]);
       triggerHaptic('impactLight');
       dispatch({ type: 'wall-hit' });
     } else if (ball.position[0] + ball.radius >= SCREEN_WIDTH) {
       ball.position[0] = SCREEN_WIDTH - ball.radius;
-      ball.velocity[0] *= -1;
+      ball.velocity[0] = -Math.abs(ball.velocity[0]);
       triggerHaptic('impactLight');
       dispatch({ type: 'wall-hit' });
     }
 
     if (ball.position[1] - ball.radius <= 0) {
       ball.position[1] = ball.radius;
-      ball.velocity[1] *= -1;
+      ball.velocity[1] = Math.abs(ball.velocity[1]);
       triggerHaptic('impactLight');
       dispatch({ type: 'wall-hit' });
     }
 
-    // Bottom (Lose Life/Ball)
+    // ------ Bottom: Lose Life ------
     if (ball.position[1] + ball.radius >= SCREEN_HEIGHT) {
       if (activeBallKeys.length > 1) {
         delete entities[key];
@@ -109,8 +113,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           dispatch({ type: 'game-over' });
           ball.velocity = [0, 0];
         } else {
-          ball.position = [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50];
-          ball.velocity = [5, -7];
+          // FIX: Set waitingToStart so player must tap to re-serve
+          scoreBoard.waitingToStart = true;
           ball.trail = [];
           paddle.size[0] = SCREEN_WIDTH * 0.25;
           scoreBoard.powerUpState = {};
@@ -118,7 +122,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       }
     }
 
-    // Paddle Collision
+    // ------ Paddle Collision ------
     const paddleX = paddle.position[0];
     const paddleY = paddle.position[1];
     const paddleW = paddle.size[0];
@@ -128,27 +132,35 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       ball.position[1] + ball.radius >= paddleY - paddleH / 2 &&
       ball.position[1] - ball.radius <= paddleY + paddleH / 2 &&
       ball.position[0] >= paddleX - paddleW / 2 &&
-      ball.position[0] <= paddleX + paddleW / 2
+      ball.position[0] <= paddleX + paddleW / 2 &&
+      ball.velocity[1] > 0 // Only bounce when moving downward
     ) {
-      ball.velocity[1] *= -1;
       ball.position[1] = paddleY - paddleH / 2 - ball.radius - 1;
-      const hitPos = (ball.position[0] - paddleX) / (paddleW / 2);
-      ball.velocity[0] = hitPos * 5;
-      
-      const speedCap = 14; 
+      const hitPos = (ball.position[0] - paddleX) / (paddleW / 2); // -1 to 1
+      ball.velocity[0] = hitPos * 6;
+      ball.velocity[1] = -Math.abs(ball.velocity[1]); // Always go up
+
+      // Speed escalation (soft cap at 14)
       const currentSpeed = Math.sqrt(ball.velocity[0]**2 + ball.velocity[1]**2);
-      if (currentSpeed < speedCap) {
-        ball.velocity[0] *= 1.03;
-        ball.velocity[1] *= 1.03;
+      if (currentSpeed < 14) {
+        ball.velocity[0] *= 1.04;
+        ball.velocity[1] *= 1.04;
+      }
+
+      // FIX: Minimum vertical speed clamp
+      if (Math.abs(ball.velocity[1]) < MIN_VY) {
+        ball.velocity[1] = -MIN_VY;
       }
 
       triggerHaptic('impactMedium');
       dispatch({ type: 'paddle-hit' });
     }
 
-    // 3. Optimized Brick Collisions
+    // ------ Brick Collisions ------
     for (const bKey of activeBrickKeys) {
       const brick = entities[bKey];
+      if (!brick.status) continue;
+
       const bX = brick.position[0];
       const bY = brick.position[1];
       const bW = brick.size[0];
@@ -158,15 +170,16 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       const dy = Math.abs(ball.position[1] - bY);
 
       if (dx <= bW / 2 + ball.radius && dy <= bH / 2 + ball.radius) {
-        const overlapX = (bW / 2 + ball.radius) - dx;
-        const overlapY = (bH / 2 + ball.radius) - dy;
+        const overlapX = bW / 2 + ball.radius - dx;
+        const overlapY = bH / 2 + ball.radius - dy;
+        const hitSide = overlapX < overlapY
+          ? (ball.position[0] < bX ? 'LEFT' : 'RIGHT')
+          : (ball.position[1] < bY ? 'TOP' : 'BOTTOM');
 
-        let hitSide = overlapX < overlapY ? (ball.position[0] < bX ? 'LEFT' : 'RIGHT') : (ball.position[1] < bY ? 'TOP' : 'BOTTOM');
-
-        // PREVENT SLIPPING: Nudge ball out of brick
-        if (hitSide === 'LEFT') ball.position[0] = bX - bW / 2 - ball.radius - 0.5;
-        else if (hitSide === 'RIGHT') ball.position[0] = bX + bW / 2 + ball.radius + 0.5;
-        else if (hitSide === 'TOP') ball.position[1] = bY - bH / 2 - ball.radius - 0.5;
+        // FIX: Nudge ball out before reversing to prevent tunneling
+        if (hitSide === 'LEFT')   ball.position[0] = bX - bW / 2 - ball.radius - 0.5;
+        else if (hitSide === 'RIGHT')  ball.position[0] = bX + bW / 2 + ball.radius + 0.5;
+        else if (hitSide === 'TOP')    ball.position[1] = bY - bH / 2 - ball.radius - 0.5;
         else if (hitSide === 'BOTTOM') ball.position[1] = bY + bH / 2 + ball.radius + 0.5;
 
         if (!scoreBoard.powerUpState.FIRE) {
@@ -174,9 +187,14 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           else ball.velocity[1] *= -1;
         }
 
-        // Damage Logic (NEW: Top=3, Sides=1)
+        // FIX: Minimum vertical speed clamp after brick hit too
+        if (Math.abs(ball.velocity[1]) < MIN_VY) {
+          ball.velocity[1] = ball.velocity[1] < 0 ? -MIN_VY : MIN_VY;
+        }
+
+        // Damage Logic: stone TOP=3dmg, sides=1dmg
         if (brick.type === 'stone' && !scoreBoard.powerUpState.FIRE) {
-          const damage = (hitSide === 'TOP') ? 3 : 1;
+          const damage = hitSide === 'TOP' ? 3 : 1;
           brick.hp -= damage;
           triggerHaptic('impactLight');
           dispatch({ type: 'brick-hit' });
@@ -195,18 +213,18 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           spawnParticles(entities, brick.position, brick.color);
           attemptPowerUpSpawn(entities, brick.position);
         }
-        break; // Collision resolved for this ball in this frame
+        break; // One collision per frame per ball
       }
     }
   });
 
   // Win Detection
-  if (activeBrickKeys.length === 0) {
+  if (activeBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
     dispatch({ type: 'win', score: scoreBoard.score });
     activeBallKeys.forEach(k => entities[k].velocity = [0, 0]);
   }
 
-  // 4. Handle Power-Ups
+  // Power-Ups
   powerUpKeys.forEach(key => {
     const pu = entities[key];
     pu.position[1] += 3;
@@ -226,11 +244,10 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 };
 
 const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
-  if (Math.random() < 0.2) { // 20% Chance
+  if (Math.random() < 0.18) {
     const types: ('WIDE' | 'MULTI' | 'FIRE' | 'LIFE')[] = ['WIDE', 'MULTI', 'FIRE', 'LIFE'];
     const type = types[Math.floor(Math.random() * types.length)];
     const id = `powerup_${Date.now()}_${Math.random()}`;
-
     entities[id] = {
       position: [...position],
       size: [30, 30],
@@ -243,10 +260,9 @@ const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
 const applyPowerUp = (entities: any, type: string, currentBallCount: number) => {
   const { scoreBoard, paddle } = entities;
   const currentTime = Date.now();
-
   switch (type) {
     case 'WIDE':
-      paddle.size[0] = SCREEN_WIDTH * 0.4; // 1.5x wider
+      paddle.size[0] = SCREEN_WIDTH * 0.4;
       scoreBoard.powerUpState.WIDE = currentTime + 15000;
       break;
     case 'FIRE':
@@ -256,21 +272,17 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
       scoreBoard.lives += 1;
       break;
     case 'MULTI':
-      // Split current balls (MAX 12 total for performance)
       if (currentBallCount >= 12) return;
-      
       const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
       currentBallKeys.forEach(key => {
         const original = entities[key];
-        // Only one split if we are near the cap
-        const splitCount = currentBallCount > 6 ? 1 : 2; 
-
+        const splitCount = currentBallCount > 6 ? 1 : 2;
         for (let i = 1; i <= splitCount; i++) {
           const newId = `ball_${Date.now()}_${i}_${Math.random()}`;
           entities[newId] = {
             ...original,
             position: [...original.position],
-            velocity: [original.velocity[0] + (i === 1 ? -1 : 1), -Math.abs(original.velocity[1])],
+            velocity: [original.velocity[0] + (i === 1 ? -2 : 2), -Math.abs(original.velocity[1])],
             renderer: Ball,
             trail: [],
           };
@@ -281,14 +293,13 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
 };
 
 const spawnParticles = (entities: any, position: [number, number], color: string) => {
-  const particleCount = 5; // Reduced from 8 for performance
-  for (let i = 0; i < particleCount; i++) {
+  for (let i = 0; i < 5; i++) {
     const id = `p_${Date.now()}_${i}_${Math.random()}`;
     entities[id] = {
       position: [...position],
       velocity: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6],
       size: 3 + Math.random() * 3,
-      color: color,
+      color,
       opacity: 1,
       renderer: Particle,
     };
