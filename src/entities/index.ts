@@ -6,7 +6,7 @@ import Brick from '../components/Brick';
 import ScoreBoard from '../components/ScoreBoard';
 import PowerUp from '../components/PowerUp';
 
-import { FLAG_LEVELS } from '../utils/levels';
+import { FLAG_LEVELS } from '../levels';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 

@@ -7,7 +7,7 @@ import Physics from './src/systems/Physics';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { FLAG_LEVELS } from './src/utils/levels';
+import { FLAG_LEVELS } from './src/levels';
 
 import { playSound } from './src/utils/audio';
 
@@ -18,10 +18,12 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
   const [currentLevel, setCurrentLevel] = useState(0);
-  const [unlockedLevels, setUnlockedLevels] = useState([0]);
+  const [unlockedLevels, setUnlockedLevels] = useState(FLAG_LEVELS.map((_, i) => i));
   const [highScores, setHighScores] = useState<{ [key: string]: number }>({});
   const [go, setGo] = useState(false);
   const [win, setWin] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [waitingToStart, setWaitingToStart] = useState(true);
   const gameEngineRef = useRef<any>(null);
 
   // Load Progress on Mount
@@ -68,7 +70,7 @@ export default function App() {
         playSound('lose');
         break;
       case 'win':
-        handleWin();
+        handleWin(e.score);
         break;
       case 'paddle-hit':
         playSound('hit');
@@ -87,23 +89,20 @@ export default function App() {
         break;
       case 'lose-life':
         playSound('lose');
+        setWaitingToStart(true);
         break;
     }
   };
 
-    const engine = gameEngineRef.current;
-    if (!engine || typeof engine.getEntities !== 'function') {
-      return;
-    }
-    
+  const handleWin = (finalScore: number) => {
     setRunning(false);
     setWin(true);
+    setWaitingToStart(true);
     playSound('win');
     triggerHaptic('notificationSuccess');
 
     // Update High Scores
-    const entities = engine.getEntities();
-    const currentScore = entities.scoreBoard ? entities.scoreBoard.score : 0;
+    const currentScore = finalScore || 0;
     const levelId = FLAG_LEVELS[currentLevel].id;
     const newScores = { ...highScores };
     if (!newScores[levelId] || currentScore > newScores[levelId]) {
@@ -125,11 +124,29 @@ export default function App() {
     setCurrentLevel(index);
     setShowMenu(false);
     setRunning(true);
+    setPaused(false);
+    setWaitingToStart(true);
     setWin(false);
     setGo(false);
     if (gameEngineRef.current) {
-      gameEngineRef.current.swap(getEntities(index));
+      const ents = getEntities(index);
+      ents.scoreBoard.waitingToStart = true;
+      gameEngineRef.current.swap(ents);
     }
+  };
+
+  const launchBall = () => {
+    if (waitingToStart && !paused && !showMenu && !win && !go) {
+      if (gameEngineRef.current && typeof gameEngineRef.current.dispatch === 'function') {
+        setWaitingToStart(false);
+        gameEngineRef.current.dispatch({ type: 'launch' });
+      }
+    }
+  };
+
+  const togglePause = () => {
+    setPaused(!paused);
+    triggerHaptic('impactLight');
   };
 
   const reset = () => {
@@ -162,9 +179,43 @@ export default function App() {
             style={styles.gameContainer}
             systems={[MovePaddle, Physics]}
             entities={getEntities(currentLevel)}
-            running={running}
+            running={running && !paused && !win && !go}
             onEvent={onEvent}
           />
+
+          {!showMenu && !win && !go && (
+            <>
+              {/* Pause Button */}
+              <TouchableOpacity onPress={togglePause} style={styles.pauseButton}>
+                <Text style={styles.pauseIcon}>{paused ? '▶' : '||'}</Text>
+              </TouchableOpacity>
+
+              {/* Tap to Start / Serve Overlay */}
+              {waitingToStart && !paused && (
+                <TouchableOpacity activeOpacity={1} onPress={launchBall} style={styles.serveOverlay}>
+                  <Text style={styles.serveText}>TAP TO SERVE</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Pause Menu Overlay */}
+              {paused && (
+                <View style={styles.overlay}>
+                  <Text style={styles.title}>PAUSED</Text>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity onPress={togglePause} style={styles.button}>
+                      <Text style={styles.buttonText}>RESUME</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={reset} style={[styles.button, { backgroundColor: '#78909C' }]}>
+                      <Text style={styles.buttonText}>RESTART</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={backToMenu} style={[styles.button, { backgroundColor: '#FF5252' }]}>
+                      <Text style={styles.buttonText}>EXIT</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
         </View>
 
         {showMenu && (
@@ -315,12 +366,41 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     letterSpacing: 1,
   },
+  pauseButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 20,
+    padding: 10,
+  },
+  pauseIcon: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    opacity: 0.8,
+  },
+  serveOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    zIndex: 15,
+  },
+  serveText: {
+    color: '#FFF',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: -1, height: 1 },
+    textShadowRadius: 10,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    zIndex: 30,
   },
   title: {
     color: '#FFFFFF',

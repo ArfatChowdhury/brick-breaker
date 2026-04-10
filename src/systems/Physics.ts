@@ -6,11 +6,22 @@ import { triggerHaptic } from '../utils/haptics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const Physics = (entities: any, { time, dispatch }: any) => {
+const Physics = (entities: any, { time, dispatch, events }: any) => {
   const paddle = entities.paddle;
   const scoreBoard = entities.scoreBoard;
 
   if (!paddle || !scoreBoard) return entities;
+
+  // 0. Handle Events
+  if (events.length > 0) {
+    const launch = events.find((e: any) => e.type === 'launch');
+    if (launch) {
+      scoreBoard.waitingToStart = false;
+      if (entities.ball_0) {
+        entities.ball_0.velocity = [5, -7];
+      }
+    }
+  }
 
   // 0. Smooth Paddle Lerp
   if (paddle.targetX !== undefined) {
@@ -47,6 +58,15 @@ const Physics = (entities: any, { time, dispatch }: any) => {
 
   activeBallKeys.forEach(key => {
     const ball = entities[key];
+
+    if (scoreBoard.waitingToStart) {
+      // Locked to paddle
+      ball.position[0] = paddle.position[0];
+      ball.position[1] = paddle.position[1] - paddle.size[1] / 2 - ball.radius - 2;
+      ball.velocity = [0, 0];
+      ball.trail = [];
+      return;
+    }
 
     // Move Ball
     ball.position[0] += ball.velocity[0];
@@ -182,7 +202,7 @@ const Physics = (entities: any, { time, dispatch }: any) => {
 
   // Win Detection
   if (activeBrickKeys.length === 0) {
-    dispatch({ type: 'win' });
+    dispatch({ type: 'win', score: scoreBoard.score });
     activeBallKeys.forEach(k => entities[k].velocity = [0, 0]);
   }
 
