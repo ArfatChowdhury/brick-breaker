@@ -1,0 +1,199 @@
+# 🎮 Brick Mania - Game Design Plan
+
+## Overview
+A premium Brick Breaker game with country flag levels, strategic brick layouts, power-ups, and progressive difficulty. Inspired by arcade classics but designed for mobile domination.
+
+---
+
+## 1. 🧱 Brick Types
+
+### Standard Brick
+- Small, dense grid (like the reference image)
+- Hit once → destroyed
+- Color-coded by row
+
+### Stone Brick (Special)
+- Harder, grey/rocky texture
+- **Directional vulnerability**:
+  - **From TOP**: 2 hits to destroy
+  - **From BOTTOM or SIDES**: Ball bounces back, NO damage
+- **Role**: Forms a "wall/barrier" around the easy bricks, making it hard to penetrate
+- Visually distinct (cracked texture after 1st top hit)
+
+### Armored Brick (Ultra-Hard)
+- Only at deepest passages
+- **5 hits from ANY direction** to destroy
+- Shows HP bar (e.g., ██████ → ████░░ → ░░░░░░)
+- Breaks with dramatic shatter effect
+
+### Bonus Brick (Golden)
+- Hidden inside the layout
+- Destroying it drops a **Power-Up**
+- Glows/pulses to hint it's special
+
+---
+
+## 2. 🗺️ Level Architecture — Country Flag Layouts
+
+Each level = 1 country's flag, except Israel.
+
+### How it works:
+- The flag is rendered as a **pixel grid of small bricks**
+- Each **color in the flag = a different brick type/color**
+- The flag pattern means bricks are NOT uniform rows — they form shapes!
+
+### Examples:
+| Level | Country | Flag Feature |
+|-------|---------|-------------|
+| 1 | Bangladesh | Green background, red circle center |
+| 2 | Turkey | Red background, white crescent & star |
+| 3 | Pakistan | Green body, white stripe, crescent + star |
+| 4 | Saudi Arabia | Green, white Arabic text & sword |
+| 5 | USA | Red/white stripes, blue star field |
+| 6 | Brazil | Green, yellow diamond, blue circle |
+| 7 | Japan | White background, red circle center |
+| ... | ... | ... |
+
+> [!TIP]
+> Flag bricks can be procedurally generated from flag color data (hex arrays). This is doable in React Native!
+
+### Stone Brick placement strategy:
+- **Border/outline of the flag** = Stone bricks (hard barrier)
+- **Inner fill** = Regular bricks
+- **Hidden inside** = Bonus bricks
+- This means the player must **break through the stone border first** before reaching the soft inner bricks → Encourages longer play sessions!
+
+```
+[ STONE ] [ STONE ] [ STONE ] [ STONE ] [ STONE ]
+[ STONE ] [REGULAR] [REGULAR] [REGULAR] [ STONE ]
+[ STONE ] [REGULAR] [BONUS  ] [REGULAR] [ STONE ]
+[ STONE ] [REGULAR] [REGULAR] [REGULAR] [ STONE ]
+[ STONE ] [ STONE ] [ STONE ] [ STONE ] [ STONE ]
+```
+
+---
+
+## 3. 🏆 Power-Ups (Hit Rewards)
+
+Drops when the ball enters the inner brick zone or hits a Bonus Brick.
+
+| Power-Up | Icon | Effect | Duration |
+|----------|------|--------|----------|
+| **Wide Paddle** | ↔️ | Paddle becomes 2x wider | 15 sec |
+| **Extra Heart** | ❤️ | +1 life | Instant |
+| **3X Ball** | 🔵🔵🔵 | Ball splits into 3 | 20 sec |
+| **+3 Balls** | ➕ | Add 3 more balls | Until lost |
+| **Fireball** | 🔥 | Ball destroys everything in one hit, no bounce needed | 10 sec |
+| **Slow Mo** | 🐢 | Ball slows down 50% for easier control | 12 sec |
+| **Shield** | 🛡️ | Bottom wall temporarily becomes a wall | 10 sec |
+| **Score Boost** | ⭐ | 2X score multiplier | 20 sec |
+
+> [!IMPORTANT]
+> Power-ups fall from the destroyed brick and the **player must catch them with the paddle**. If they miss, the power-up is lost!
+
+---
+
+## 4. ⏱️ Timer System (Dual Mode)
+
+### Mode A — Speed Challenge (Recommended)
+- **Timer counts UP** (like a stopwatch)
+- At the end of the level, your time is recorded
+- Star rating: 
+  - ⭐⭐⭐ = Under 60 seconds
+  - ⭐⭐ = Under 120 seconds
+  - ⭐ = Completed (any time)
+- This creates **replay motivation** without pressure
+
+### Mode B — Countdown Timer (Hard Mode)
+- **Timer counts DOWN** (e.g., 3 minutes)
+- If time runs out → level failed
+- Harder mode unlocked after completing all levels once
+- Optional, for competitive players
+
+---
+
+## 5. 📈 Progressive Difficulty per Level
+
+Each level naturally escalates:
+
+| Mechanic | Early Levels | Mid Levels | Late Levels |
+|----------|-------------|------------|-------------|
+| Brick density | Sparse | Dense | Very dense (like image) |
+| Stone brick border | None | Thin | Thick (2-3 layers) |
+| Ball speed | Slow | Medium | Fast |
+| Armored bricks | None | Rare | Common |
+| Power-up frequency | Frequent | Occasional | Rare |
+| Ball start size | Normal | Normal | Slightly smaller |
+
+### Ball Speed Escalation (Your idea ✅)
+- Each time the ball bounces off the paddle → tiny speed increase
+- After 10 bounces → speed resets to a moderate fast level
+- This creates **tension** as the ball accelerates mid-play
+
+---
+
+## 6. 🎮 Gameplay Loop
+
+```
+Start Level → Flag Layout Revealed
+       ↓
+Player breaks outer Stone Brick border
+       ↓
+Ball enters inner zone → Power-up drops
+       ↓
+Player catches power-up with paddle (optional)
+       ↓
+Clear all bricks → Win screen + Time score + Stars
+       ↓
+Next Country Flag unlocked
+```
+
+---
+
+## 7. 📱 UI/UX Recommendations
+
+- **Level Select**: World map style, with countries marked as pins
+- **Flag Preview**: Show flag silhouette before level starts as a teaser
+- **In-Game HUD**: Score | Lives | Timer | Active Power-Up icon
+- **Brick HP indicators**: Small crack lines on stone/armored bricks
+- **Ball trail effect**: Fireball mode = flame trail; normal = subtle glow
+- **Celebration screen**: Flag waves in the background when level completed
+
+---
+
+## 8. 🔨 Technical Implementation Order
+
+Phase 1 — Core upgrades:
+1. Resize bricks to small/dense (increase BRICK_COLS to 14–16)
+2. Reduce ball radius
+3. Add directional collision detection (top vs bottom hit)
+4. Add Stone Brick type with directional damage
+
+Phase 2 — Power-up system:
+5. Add power-up entity that falls from destroyed bonus bricks
+6. Paddle-catch detection for power-ups
+7. Apply each power-up effect (temporary timers using `useRef`)
+
+Phase 3 — Level system:
+8. Define flag layouts as 2D color arrays (one per country)
+9. Level select screen (world map or simple list)
+10. Add timer system with star rating
+
+Phase 4 — Polish:
+11. Animations (cracking brick, power-up fall, ball trail)
+12. Sound effects
+13. Particle effects on brick destruction
+14. Speed escalation
+
+---
+
+## 9. 💡 My Recommendations
+
+> [!NOTE]
+> **Start with Phase 1 + Phase 3 (flag layouts)** — this gives the game its unique identity immediately. The country flag mechanic is genuinely original and will make the game memorable.
+
+> [!TIP]
+> Use a **simple array of hex colors per flag** to generate brick grids. Example for Bangladesh: `["#006A4E", "#F42A41"]` maps to Green bricks and Red circle bricks. We can write a `generateFlagLevel(flagData)` utility function.
+
+> [!IMPORTANT]
+> The **stone brick directional logic** is the most complex technical piece. We need to determine the SIDE from which the ball hit the brick (compare ball velocity direction). This is achievable but requires careful collision math.
