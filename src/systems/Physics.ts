@@ -1,6 +1,8 @@
 import { Dimensions } from 'react-native';
 import Ball from '../components/Ball';
 import PowerUpComponent from '../components/PowerUp';
+import Particle from '../components/Particle';
+import { triggerHaptic } from '../utils/haptics';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -16,10 +18,20 @@ const Physics = (entities: any, { time, dispatch }: any) => {
     paddle.position[0] += (paddle.targetX - paddle.position[0]) * lerpFactor;
   }
 
-  // 1. Timer Cleanups (Power-Up expiration)
+  // 0.1 Handle Particles (Optimized)
+  Object.keys(entities).forEach(key => {
+    if (key.startsWith('p_')) {
+      const p = entities[key];
+      p.position[0] += p.velocity[0];
+      p.position[1] += p.velocity[1];
+      p.opacity -= 0.1; // Faster fade for performance
+      if (p.opacity <= 0) delete entities[key];
+    }
+  });
+
+  // 1. Timer Cleanups... (Keep existing logic)
   const currentTime = Date.now();
   if (scoreBoard.powerUpState.WIDE && currentTime > scoreBoard.powerUpState.WIDE) {
-    // Reset paddle size
     paddle.size[0] = SCREEN_WIDTH * 0.25;
     delete scoreBoard.powerUpState.WIDE;
   }
@@ -27,152 +39,167 @@ const Physics = (entities: any, { time, dispatch }: any) => {
     delete scoreBoard.powerUpState.FIRE;
   }
 
-  // 2. Handle All Balls
-  let totalBalls = 0;
-  let activeBricks = 0;
+  // 2. Pre-filter Active Entities for Performance
+  const allKeys = Object.keys(entities);
+  const activeBallKeys = allKeys.filter(k => k.startsWith('ball_'));
+  const activeBrickKeys = allKeys.filter(k => k.startsWith('brick_') && entities[k].status);
+  const powerUpKeys = allKeys.filter(k => k.startsWith('powerup_'));
 
-  Object.keys(entities).forEach(key => {
-    if (key.startsWith('ball_')) {
-      const ball = entities[key];
-      totalBalls++;
+  activeBallKeys.forEach(key => {
+    const ball = entities[key];
 
-      // Move Ball
-      ball.position[0] += ball.velocity[0];
-      ball.position[1] += ball.velocity[1];
+    // Move Ball
+    ball.position[0] += ball.velocity[0];
+    ball.position[1] += ball.velocity[1];
 
-      // Wall Collisions
-      if (ball.position[0] - ball.radius <= 0) {
-        ball.position[0] = ball.radius;
-        ball.velocity[0] *= -1;
-        dispatch({ type: 'wall-hit' });
-      } else if (ball.position[0] + ball.radius >= SCREEN_WIDTH) {
-        ball.position[0] = SCREEN_WIDTH - ball.radius;
-        ball.velocity[0] *= -1;
-        dispatch({ type: 'wall-hit' });
-      }
+    // Trail tracking (Only for main ball or limited for others)
+    if (!ball.trail) ball.trail = [];
+    ball.trail.unshift([ball.position[0], ball.position[1]]);
+    if (ball.trail.length > 4) ball.trail.pop();
 
-      if (ball.position[1] - ball.radius <= 0) {
-        ball.position[1] = ball.radius;
-        ball.velocity[1] *= -1;
-        dispatch({ type: 'wall-hit' });
-      }
+    // Wall Collisions
+    if (ball.position[0] - ball.radius <= 0) {
+      ball.position[0] = ball.radius;
+      ball.velocity[0] *= -1;
+      triggerHaptic('impactLight');
+      dispatch({ type: 'wall-hit' });
+    } else if (ball.position[0] + ball.radius >= SCREEN_WIDTH) {
+      ball.position[0] = SCREEN_WIDTH - ball.radius;
+      ball.velocity[0] *= -1;
+      triggerHaptic('impactLight');
+      dispatch({ type: 'wall-hit' });
+    }
 
-      // Bottom (Lose Life/Ball)
-      if (ball.position[1] + ball.radius >= SCREEN_HEIGHT) {
-        if (Object.keys(entities).filter(k => k.startsWith('ball_')).length > 1) {
-          delete entities[key];
+    if (ball.position[1] - ball.radius <= 0) {
+      ball.position[1] = ball.radius;
+      ball.velocity[1] *= -1;
+      triggerHaptic('impactLight');
+      dispatch({ type: 'wall-hit' });
+    }
+
+    // Bottom (Lose Life/Ball)
+    if (ball.position[1] + ball.radius >= SCREEN_HEIGHT) {
+      if (activeBallKeys.length > 1) {
+        delete entities[key];
+      } else {
+        scoreBoard.lives -= 1;
+        dispatch({ type: 'lose-life' });
+        triggerHaptic('notificationError');
+        if (scoreBoard.lives <= 0) {
+          dispatch({ type: 'game-over' });
+          ball.velocity = [0, 0];
         } else {
-          scoreBoard.lives -= 1;
-          dispatch({ type: 'lose-life' });
-          if (scoreBoard.lives <= 0) {
-            dispatch({ type: 'game-over' });
-            ball.velocity = [0, 0];
-          } else {
-            // Reset main ball
-            ball.position = [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50];
-            ball.velocity = [4, -5];
-            // Reset buffs on death
-            paddle.size[0] = SCREEN_WIDTH * 0.25;
-            scoreBoard.powerUpState = {};
-          }
+          ball.position = [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50];
+          ball.velocity = [5, -7];
+          ball.trail = [];
+          paddle.size[0] = SCREEN_WIDTH * 0.25;
+          scoreBoard.powerUpState = {};
         }
       }
+    }
 
-      // Paddle Collision
-      const paddleX = paddle.position[0];
-      const paddleY = paddle.position[1];
-      const paddleW = paddle.size[0];
-      const paddleH = paddle.size[1];
+    // Paddle Collision
+    const paddleX = paddle.position[0];
+    const paddleY = paddle.position[1];
+    const paddleW = paddle.size[0];
+    const paddleH = paddle.size[1];
 
-      if (
-        ball.position[1] + ball.radius >= paddleY - paddleH / 2 &&
-        ball.position[1] - ball.radius <= paddleY + paddleH / 2 &&
-        ball.position[0] >= paddleX - paddleW / 2 &&
-        ball.position[0] <= paddleX + paddleW / 2
-      ) {
-        ball.velocity[1] *= -1;
-        ball.position[1] = paddleY - paddleH / 2 - ball.radius - 1;
-        const hitPos = (ball.position[0] - paddleX) / (paddleW / 2);
-        ball.velocity[0] = hitPos * 5;
-        dispatch({ type: 'paddle-hit' });
+    if (
+      ball.position[1] + ball.radius >= paddleY - paddleH / 2 &&
+      ball.position[1] - ball.radius <= paddleY + paddleH / 2 &&
+      ball.position[0] >= paddleX - paddleW / 2 &&
+      ball.position[0] <= paddleX + paddleW / 2
+    ) {
+      ball.velocity[1] *= -1;
+      ball.position[1] = paddleY - paddleH / 2 - ball.radius - 1;
+      const hitPos = (ball.position[0] - paddleX) / (paddleW / 2);
+      ball.velocity[0] = hitPos * 5;
+      
+      const speedCap = 14; 
+      const currentSpeed = Math.sqrt(ball.velocity[0]**2 + ball.velocity[1]**2);
+      if (currentSpeed < speedCap) {
+        ball.velocity[0] *= 1.03;
+        ball.velocity[1] *= 1.03;
       }
 
-      // 3. Brick Collisions (Per Ball)
-      Object.keys(entities).forEach(bKey => {
-        if (bKey.startsWith('brick_')) {
-          const brick = entities[bKey];
-          if (brick.status) {
-            activeBricks++;
-            const bX = brick.position[0];
-            const bY = brick.position[1];
-            const bW = brick.size[0];
-            const bH = brick.size[1];
+      triggerHaptic('impactMedium');
+      dispatch({ type: 'paddle-hit' });
+    }
 
-            const dx = Math.abs(ball.position[0] - bX);
-            const dy = Math.abs(ball.position[1] - bY);
+    // 3. Optimized Brick Collisions
+    for (const bKey of activeBrickKeys) {
+      const brick = entities[bKey];
+      const bX = brick.position[0];
+      const bY = brick.position[1];
+      const bW = brick.size[0];
+      const bH = brick.size[1];
 
-            if (dx <= bW / 2 + ball.radius && dy <= bH / 2 + ball.radius) {
-              const overlapX = (bW / 2 + ball.radius) - dx;
-              const overlapY = (bH / 2 + ball.radius) - dy;
+      const dx = Math.abs(ball.position[0] - bX);
+      const dy = Math.abs(ball.position[1] - bY);
 
-              let hitSide = overlapX < overlapY ? (ball.position[0] < bX ? 'LEFT' : 'RIGHT') : (ball.position[1] < bY ? 'TOP' : 'BOTTOM');
+      if (dx <= bW / 2 + ball.radius && dy <= bH / 2 + ball.radius) {
+        const overlapX = (bW / 2 + ball.radius) - dx;
+        const overlapY = (bH / 2 + ball.radius) - dy;
 
-              // Fireball Mode: No bounce, just destroy
-              if (!scoreBoard.powerUpState.FIRE) {
-                if (overlapX < overlapY) ball.velocity[0] *= -1;
-                else ball.velocity[1] *= -1;
-              }
+        let hitSide = overlapX < overlapY ? (ball.position[0] < bX ? 'LEFT' : 'RIGHT') : (ball.position[1] < bY ? 'TOP' : 'BOTTOM');
 
-              // Damage Logic
-              if (brick.type === 'stone' && !scoreBoard.powerUpState.FIRE) {
-                if (hitSide === 'TOP') {
-                  brick.hp -= 1;
-                  dispatch({ type: 'brick-hit' });
-                  if (brick.hp <= 0) {
-                    brick.status = false;
-                    scoreBoard.score += 50;
-                    attemptPowerUpSpawn(entities, brick.position);
-                  }
-                } else {
-                  dispatch({ type: 'wall-hit' }); // Bounce off stone side sounds like a wall
-                }
-              } else {
-                brick.status = false;
-                scoreBoard.score += 10;
-                dispatch({ type: 'brick-break' });
-                attemptPowerUpSpawn(entities, brick.position);
-              }
-            }
-          }
+        // PREVENT SLIPPING: Nudge ball out of brick
+        if (hitSide === 'LEFT') ball.position[0] = bX - bW / 2 - ball.radius - 0.5;
+        else if (hitSide === 'RIGHT') ball.position[0] = bX + bW / 2 + ball.radius + 0.5;
+        else if (hitSide === 'TOP') ball.position[1] = bY - bH / 2 - ball.radius - 0.5;
+        else if (hitSide === 'BOTTOM') ball.position[1] = bY + bH / 2 + ball.radius + 0.5;
+
+        if (!scoreBoard.powerUpState.FIRE) {
+          if (overlapX < overlapY) ball.velocity[0] *= -1;
+          else ball.velocity[1] *= -1;
         }
-      });
+
+        // Damage Logic (NEW: Top=3, Sides=1)
+        if (brick.type === 'stone' && !scoreBoard.powerUpState.FIRE) {
+          const damage = (hitSide === 'TOP') ? 3 : 1;
+          brick.hp -= damage;
+          triggerHaptic('impactLight');
+          dispatch({ type: 'brick-hit' });
+          if (brick.hp <= 0) {
+            brick.status = false;
+            scoreBoard.score += 50;
+            triggerHaptic('impactMedium');
+            spawnParticles(entities, brick.position, brick.color);
+            attemptPowerUpSpawn(entities, brick.position);
+          }
+        } else {
+          brick.status = false;
+          scoreBoard.score += 10;
+          triggerHaptic('impactMedium');
+          dispatch({ type: 'brick-break' });
+          spawnParticles(entities, brick.position, brick.color);
+          attemptPowerUpSpawn(entities, brick.position);
+        }
+        break; // Collision resolved for this ball in this frame
+      }
     }
   });
 
   // Win Detection
-  if (Object.keys(entities).filter(k => k.startsWith('brick_') && entities[k].status).length === 0) {
+  if (activeBrickKeys.length === 0) {
     dispatch({ type: 'win' });
-    Object.keys(entities).filter(k => k.startsWith('ball_')).forEach(k => entities[k].velocity = [0, 0]);
+    activeBallKeys.forEach(k => entities[k].velocity = [0, 0]);
   }
 
   // 4. Handle Power-Ups
-  Object.keys(entities).forEach(key => {
-    if (key.startsWith('powerup_')) {
-      const pu = entities[key];
-      pu.position[1] += 3; // Falling speed
+  powerUpKeys.forEach(key => {
+    const pu = entities[key];
+    pu.position[1] += 3;
 
-      // Collection
-      const dx = Math.abs(pu.position[0] - paddle.position[0]);
-      const dy = Math.abs(pu.position[1] - paddle.position[1]);
-      if (dx < paddle.size[0] / 2 && dy < paddle.size[1] / 2) {
-        applyPowerUp(entities, pu.type);
-        dispatch({ type: 'powerup-collect' });
-        delete entities[key];
-      }
-
-      // Cleanup off-screen
-      if (pu.position[1] > SCREEN_HEIGHT) delete entities[key];
+    const dx = Math.abs(pu.position[0] - paddle.position[0]);
+    const dy = Math.abs(pu.position[1] - paddle.position[1]);
+    if (dx < paddle.size[0] / 2 && dy < paddle.size[1] / 2) {
+      applyPowerUp(entities, pu.type, activeBallKeys.length);
+      triggerHaptic('impactMedium');
+      dispatch({ type: 'powerup-collect' });
+      delete entities[key];
     }
+    if (pu.position[1] > SCREEN_HEIGHT) delete entities[key];
   });
 
   return entities;
@@ -193,7 +220,7 @@ const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
   }
 };
 
-const applyPowerUp = (entities: any, type: string) => {
+const applyPowerUp = (entities: any, type: string, currentBallCount: number) => {
   const { scoreBoard, paddle } = entities;
   const currentTime = Date.now();
 
@@ -209,21 +236,42 @@ const applyPowerUp = (entities: any, type: string) => {
       scoreBoard.lives += 1;
       break;
     case 'MULTI':
-      // Split current balls (max balls for performance)
+      // Split current balls (MAX 12 total for performance)
+      if (currentBallCount >= 12) return;
+      
       const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
       currentBallKeys.forEach(key => {
         const original = entities[key];
-        [1, 2].forEach(i => {
+        // Only one split if we are near the cap
+        const splitCount = currentBallCount > 6 ? 1 : 2; 
+
+        for (let i = 1; i <= splitCount; i++) {
           const newId = `ball_${Date.now()}_${i}_${Math.random()}`;
           entities[newId] = {
             ...original,
             position: [...original.position],
             velocity: [original.velocity[0] + (i === 1 ? -1 : 1), -Math.abs(original.velocity[1])],
             renderer: Ball,
+            trail: [],
           };
-        });
+        }
       });
       break;
+  }
+};
+
+const spawnParticles = (entities: any, position: [number, number], color: string) => {
+  const particleCount = 5; // Reduced from 8 for performance
+  for (let i = 0; i < particleCount; i++) {
+    const id = `p_${Date.now()}_${i}_${Math.random()}`;
+    entities[id] = {
+      position: [...position],
+      velocity: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6],
+      size: 3 + Math.random() * 3,
+      color: color,
+      opacity: 1,
+      renderer: Particle,
+    };
   }
 };
 

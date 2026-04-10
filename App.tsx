@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { StatusBar, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
@@ -11,14 +11,54 @@ import { FLAG_LEVELS } from './src/utils/levels';
 
 import { playSound } from './src/utils/audio';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { triggerHaptic } from './src/utils/haptics';
+
 export default function App() {
   const [running, setRunning] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [unlockedLevels, setUnlockedLevels] = useState([0]);
+  const [highScores, setHighScores] = useState<{ [key: string]: number }>({});
   const [go, setGo] = useState(false);
   const [win, setWin] = useState(false);
-  const [gameEngine, setGameEngine] = useState<any>(null);
+  const gameEngineRef = useRef<any>(null);
+
+  // Load Progress on Mount
+  React.useEffect(() => {
+    loadProgress();
+  }, []);
+
+  const loadProgress = async () => {
+    try {
+      const savedLevels = await AsyncStorage.getItem('@unlocked_levels');
+      const savedScores = await AsyncStorage.getItem('@high_scores');
+      if (savedLevels) setUnlockedLevels(JSON.parse(savedLevels));
+      if (savedScores) setHighScores(JSON.parse(savedScores));
+    } catch (e) {
+      console.log('Error loading progress', e);
+    }
+  };
+
+  const saveProgress = async (levels: number[], scores: any) => {
+    try {
+      await AsyncStorage.setItem('@unlocked_levels', JSON.stringify(levels));
+      await AsyncStorage.setItem('@high_scores', JSON.stringify(scores));
+    } catch (e) {
+      console.log('Error saving progress', e);
+    }
+  };
+
+  const resetProgress = async () => {
+    try {
+      await AsyncStorage.clear();
+      setUnlockedLevels([0]);
+      setHighScores({});
+      triggerHaptic('notificationSuccess');
+    } catch (e) {
+      console.log('Error resetting progress', e);
+    }
+  };
 
   const onEvent = (e: any) => {
     switch (e.type) {
@@ -28,12 +68,7 @@ export default function App() {
         playSound('lose');
         break;
       case 'win':
-        setRunning(false);
-        setWin(true);
-        playSound('win');
-        if (currentLevel + 1 < FLAG_LEVELS.length && !unlockedLevels.includes(currentLevel + 1)) {
-          setUnlockedLevels([...unlockedLevels, currentLevel + 1]);
-        }
+        handleWin();
         break;
       case 'paddle-hit':
         playSound('hit');
@@ -56,14 +91,44 @@ export default function App() {
     }
   };
 
+    const engine = gameEngineRef.current;
+    if (!engine || typeof engine.getEntities !== 'function') {
+      return;
+    }
+    
+    setRunning(false);
+    setWin(true);
+    playSound('win');
+    triggerHaptic('notificationSuccess');
+
+    // Update High Scores
+    const entities = engine.getEntities();
+    const currentScore = entities.scoreBoard ? entities.scoreBoard.score : 0;
+    const levelId = FLAG_LEVELS[currentLevel].id;
+    const newScores = { ...highScores };
+    if (!newScores[levelId] || currentScore > newScores[levelId]) {
+      newScores[levelId] = currentScore;
+    }
+    setHighScores(newScores);
+
+    // Unlock Next Level
+    let newUnlocked = [...unlockedLevels];
+    if (currentLevel + 1 < FLAG_LEVELS.length && !unlockedLevels.includes(currentLevel + 1)) {
+      newUnlocked = [...unlockedLevels, currentLevel + 1];
+      setUnlockedLevels(newUnlocked);
+    }
+
+    saveProgress(newUnlocked, newScores);
+  };
+
   const startLevel = (index: number) => {
     setCurrentLevel(index);
     setShowMenu(false);
     setRunning(true);
     setWin(false);
     setGo(false);
-    if (gameEngine) {
-      gameEngine.swap(getEntities(index));
+    if (gameEngineRef.current) {
+      gameEngineRef.current.swap(getEntities(index));
     }
   };
 
@@ -71,8 +136,8 @@ export default function App() {
     setGo(false);
     setWin(false);
     setRunning(true);
-    if (gameEngine) {
-      gameEngine.swap(getEntities(currentLevel));
+    if (gameEngineRef.current) {
+      gameEngineRef.current.swap(getEntities(currentLevel));
     }
   };
 
@@ -93,7 +158,7 @@ export default function App() {
           pointerEvents={showMenu ? 'none' : 'auto'}
         >
           <GameEngine
-            ref={(ref) => setGameEngine(ref)}
+            ref={gameEngineRef}
             style={styles.gameContainer}
             systems={[MovePaddle, Physics]}
             entities={getEntities(currentLevel)}
@@ -104,11 +169,15 @@ export default function App() {
 
         {showMenu && (
           <View style={styles.menuContainer}>
-            <Text style={styles.menuTitle}>BRICK MANIA</Text>
-            <Text style={styles.menuSubtitle}>WORLD TOUR</Text>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>BRICK MANIA</Text>
+              <Text style={styles.menuSubtitle}>WORLD TOUR</Text>
+            </View>
+
             <View style={styles.levelGrid}>
               {FLAG_LEVELS.map((lvl, index) => {
                 const isUnlocked = unlockedLevels.includes(index);
+                const best = highScores[lvl.id] || 0;
                 return (
                   <TouchableOpacity
                     key={lvl.id}
@@ -120,10 +189,15 @@ export default function App() {
                       {!isUnlocked && <Text style={styles.lockIcon}>🔒</Text>}
                     </View>
                     <Text style={styles.levelName}>{lvl.name}</Text>
+                    {isUnlocked && <Text style={styles.bestScore}>BEST: {best}</Text>}
                   </TouchableOpacity>
                 );
               })}
             </View>
+
+            <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
+              <Text style={styles.resetText}>RESET PROGRESS</Text>
+            </TouchableOpacity>
           </View>
         )}
         
@@ -174,6 +248,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#1A1A1A',
   },
+  menuHeader: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
   menuTitle: {
     color: '#FFD54F',
     fontSize: 40,
@@ -184,7 +262,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     opacity: 0.7,
-    marginBottom: 40,
     letterSpacing: 8,
   },
   levelGrid: {
@@ -196,6 +273,7 @@ const styles = StyleSheet.create({
     width: 100,
     margin: 10,
     alignItems: 'center',
+    height: 110,
   },
   levelCardLocked: {
     opacity: 0.4,
@@ -217,6 +295,25 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  bestScore: {
+    color: '#FFD54F',
+    fontSize: 10,
+    marginTop: 2,
+    opacity: 0.8,
+  },
+  resetButton: {
+    marginTop: 40,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,50,50,0.3)',
+    borderRadius: 8,
+  },
+  resetText: {
+    color: '#FF5252',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

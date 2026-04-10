@@ -42,13 +42,69 @@ export const FLAG_LEVELS = [
     id: 'PS',
     backgroundColor: '#FFFFFF',
     pattern: (r: number, c: number, rows: number, cols: number) => {
-      // Strips: Black (top), White (mid), Green (bottom)
-      // Triangle: Red (left)
       const isTriangle = c < (rows/2 - Math.abs(r - rows/2)) * 0.8;
       if (isTriangle) return 'RED';
       if (r < rows / 3) return 'BLACK';
       if (r < (rows / 3) * 2) return 'WHITE';
       return 'GREEN';
+    },
+  },
+  {
+    name: 'Saudi Arabia',
+    id: 'SA',
+    backgroundColor: '#165D31',
+    pattern: (r: number, c: number, rows: number, cols: number) => {
+      // Script and Sword representation
+      const isSword = r === 12 && c > 3 && c < 11;
+      const isScript = r > 6 && r < 10 && c > 4 && c < 10;
+      return (isSword || isScript) ? 'WHITE' : 'background';
+    },
+  },
+  {
+    name: 'USA',
+    id: 'US',
+    backgroundColor: '#B22234',
+    pattern: (r: number, c: number, rows: number, cols: number) => {
+      const isCanton = r < rows / 2 && c < cols / 2;
+      if (isCanton) return 'BLUE';
+      return (r % 2 === 0) ? 'background' : 'WHITE'; // Stripes
+    },
+  },
+  {
+    name: 'Nepal',
+    id: 'NP',
+    backgroundColor: '#DC143C',
+    pattern: (r: number, c: number, rows: number, cols: number) => {
+      // Non-rectangular shape: two triangles
+      const maxCtop = (r / 8) * cols;
+      const maxCbot = ((r - 8) / 8) * cols;
+      
+      const isInTop = r < 8 && c < maxCtop;
+      const isInBot = r >= 8 && c < maxCbot;
+      
+      if (!isInTop && !isInBot) return 'NONE'; 
+      
+      const isSun = r === 12 && c === 3;
+      const isMoon = r === 4 && c === 3;
+      
+      return (isSun || isMoon) ? 'WHITE' : 'background';
+    },
+  },
+  {
+    name: 'The Fortress',
+    id: 'FORTRESS',
+    backgroundColor: '#37474F',
+    pattern: (r: number, c: number, rows: number, cols: number) => {
+      // SHAPE: Solid stone walls on sides, narrow entry in middle
+      const isWall = (c < 5 || c > cols - 6) && r > 2;
+      const isGuard = r === 2 && (c === 6 || c === 7); // Center guard
+      
+      if (isWall || isGuard) return 'STONE';
+      
+      // Reward bricks inside
+      if (r > 6 && r < 10 && c > 5 && c < 9) return 'WHITE';
+      
+      return 'background';
     },
   },
 ];

@@ -33,19 +33,39 @@ const Brick: React.FC<BrickProps> = ({
     top: y,
     width: width,
     height: height,
-    backgroundColor: isStone ? '#78909C' : color, // Grey for stone
+    backgroundColor: isStone ? '#78909C' : color,
     borderRadius: 2,
     borderWidth: 1,
     borderColor: isStone ? '#455A64' : 'rgba(255,255,255,0.3)',
-    opacity: hp === 1 && isStone ? 0.7 : 1, // Subtle hint for damaged stone
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 1,
     elevation: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   };
 
-  return <View style={style} />;
+  return (
+    <View style={style}>
+      {/* Cracked visual for Stone Bricks */}
+      {isStone && hp === 1 && (
+        <>
+          <View style={[styles.crack, { transform: [{ rotate: '45deg' }] }]} />
+          <View style={[styles.crack, { transform: [{ rotate: '-45deg' }] }]} />
+        </>
+      )}
+    </View>
+  );
 };
+
+const styles = StyleSheet.create({
+  crack: {
+    position: 'absolute',
+    width: '80%',
+    height: 1.5,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+});
 
 export default Brick;

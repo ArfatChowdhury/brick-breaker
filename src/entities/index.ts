@@ -37,7 +37,7 @@ export const getEntities = (levelIndex = 0) => {
     },
     ball_0: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50],
-      velocity: [4, -5],
+      velocity: [5, -7],
       radius: BALL_RADIUS,
       renderer: Ball,
     },
@@ -53,11 +53,14 @@ export const getEntities = (levelIndex = 0) => {
       let brickColor = level.backgroundColor;
       const patternResult = level.pattern(r, c, BRICK_ROWS, BRICK_COLS);
 
+      if (patternResult === 'NONE' && !isBorder) continue; // Skip bricks for non-rectangular flags
+      
       if (patternResult === 'circle') brickColor = level.circleColor;
       else if (patternResult === 'RED') brickColor = '#EE2335';
       else if (patternResult === 'BLACK') brickColor = '#000000';
       else if (patternResult === 'WHITE') brickColor = '#FFFFFF';
       else if (patternResult === 'GREEN') brickColor = '#007A3D';
+      else if (patternResult === 'BLUE') brickColor = '#002664';
 
       entities[brickId] = {
         position: [
