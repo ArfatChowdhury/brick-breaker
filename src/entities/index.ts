@@ -21,7 +21,15 @@ export const BRICK_WIDTH = (SCREEN_WIDTH - 40) / BRICK_COLS;
 
 export const getEntities = (levelIndex = 0) => {
   const level = FLAG_LEVELS[levelIndex] || FLAG_LEVELS[0];
-  
+  // Per-level resolution override (falls back to global defaults)
+  const brickRows = level.gridRows ?? BRICK_ROWS;
+  const brickCols = level.gridCols ?? BRICK_COLS;
+  const brickWidth = (SCREEN_WIDTH - 40) / brickCols;
+  const brickHeight = level.gridCols ? brickWidth * 0.6 : BRICK_HEIGHT;
+
+  const paddleMultiplier = level.paddleSizeMultiplier ?? 1.0;
+  const speedScale = level.initialBallSpeed ? level.initialBallSpeed / 8.6 : 1.0;
+
   const entities: any = {
     scoreBoard: {
       score: 0,
@@ -32,30 +40,30 @@ export const getEntities = (levelIndex = 0) => {
     },
     paddle: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.85],
-      size: [PADDLE_WIDTH, PADDLE_HEIGHT],
+      size: [PADDLE_WIDTH * paddleMultiplier, PADDLE_HEIGHT],
       renderer: Paddle,
     },
     ball_0: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50],
-      velocity: [5, -7],
-      radius: BALL_RADIUS,
+      velocity: [5 * speedScale, -7 * speedScale],
+      radius: BALL_RADIUS * paddleMultiplier,
       renderer: Ball,
     },
   };
 
   // Generate Flag Bricks
-  for (let r = 0; r < BRICK_ROWS; r++) {
-    for (let c = 0; c < BRICK_COLS; c++) {
+  for (let r = 0; r < brickRows; r++) {
+    for (let c = 0; c < brickCols; c++) {
       const brickId = `brick_${r}_${c}`;
       
-      const isBorder = r === 0 || r === BRICK_ROWS - 1 || c === 0 || c === BRICK_COLS - 1;
+      const isBorder = r === 0 || r === brickRows - 1 || c === 0 || c === brickCols - 1;
       
       let brickColor = level.backgroundColor;
-      const patternResult = level.pattern(r, c, BRICK_ROWS, BRICK_COLS);
+      const patternResult = level.pattern(r, c, brickRows, brickCols);
 
       if (patternResult === 'NONE' && !isBorder) continue; // Skip bricks for non-rectangular flags
       
-      if (patternResult === 'circle') brickColor = level.circleColor;
+      if (patternResult === 'circle') brickColor = level.circleColor ?? level.backgroundColor;
       else if (patternResult === 'RED') brickColor = '#EE2335';
       else if (patternResult === 'BLACK') brickColor = '#000000';
       else if (patternResult === 'WHITE') brickColor = '#FFFFFF';
@@ -64,14 +72,15 @@ export const getEntities = (levelIndex = 0) => {
 
       entities[brickId] = {
         position: [
-          20 + c * BRICK_WIDTH + BRICK_WIDTH / 2,
-          80 + r * BRICK_HEIGHT + BRICK_HEIGHT / 2,
+          20 + c * brickWidth + brickWidth / 2,
+          80 + r * brickHeight + brickHeight / 2,
         ],
-        size: [BRICK_WIDTH - 2, BRICK_HEIGHT - 2],
+        size: [brickWidth - 1, brickHeight - 1],
         color: isBorder ? '#78909C' : brickColor,
         status: true,
-        type: isBorder ? 'stone' : 'regular',
-        hp: isBorder ? 2 : 1,
+        permanent: isBorder || patternResult === 'STONE3',
+        type: (patternResult === 'STONE' || patternResult === 'STONE3' || isBorder) ? 'stone' : 'regular',
+        hp: patternResult === 'STONE3' ? 3 : (isBorder ? 2 : 1),
         renderer: Brick,
       };
     }

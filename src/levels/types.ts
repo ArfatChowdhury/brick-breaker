@@ -8,4 +8,6 @@ export interface LevelConfig {
   // Future extensibility
   initialBallSpeed?: number;
   paddleSizeMultiplier?: number;
+  gridRows?: number;
+  gridCols?: number;
 }

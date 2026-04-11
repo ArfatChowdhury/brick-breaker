@@ -20,9 +20,10 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     const launch = events.find((e: any) => e.type === 'launch');
     if (launch) {
       scoreBoard.waitingToStart = false;
-      if (entities.ball_0) {
-        entities.ball_0.velocity = [4, -8]; // Slightly steeper initial angle
-      }
+      const allActive = Object.keys(entities).filter(k => k.startsWith('ball_'));
+      allActive.forEach(bk => {
+        entities[bk].velocity = [4, -8];
+      });
     }
   }
 
@@ -57,7 +58,12 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   // 2. Pre-filter Active Entities for Performance
   const allKeys = Object.keys(entities);
   const activeBallKeys = allKeys.filter(k => k.startsWith('ball_'));
-  const activeBrickKeys = allKeys.filter(k => k.startsWith('brick_') && entities[k].status);
+  const activeBrickKeys = allKeys.filter(
+    k => k.startsWith('brick_') && entities[k].status  // ALL bricks for collision
+  );
+  const clearableBrickKeys = allKeys.filter(
+    k => k.startsWith('brick_') && entities[k].status && !entities[k].permanent // non-permanent for win check
+  );
   const powerUpKeys = allKeys.filter(k => k.startsWith('powerup_'));
 
   activeBallKeys.forEach(key => {
@@ -113,11 +119,19 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           dispatch({ type: 'game-over' });
           ball.velocity = [0, 0];
         } else {
-          // FIX: Set waitingToStart so player must tap to re-serve
           scoreBoard.waitingToStart = true;
-          ball.trail = [];
           paddle.size[0] = SCREEN_WIDTH * 0.25;
           scoreBoard.powerUpState = {};
+
+          const oldBall = entities[key];
+          delete entities[key];
+          entities['ball_0'] = {
+            position: [paddle.position[0], paddle.position[1] - paddle.size[1] / 2 - oldBall.radius - 2],
+            velocity: [0, 0],
+            radius: oldBall.radius,
+            renderer: oldBall.renderer,
+            trail: []
+          };
         }
       }
     }
@@ -218,8 +232,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     }
   });
 
-  // Win Detection
-  if (activeBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
+  // Win Detection — only non-permanent bricks count
+  if (clearableBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
     dispatch({ type: 'win', score: scoreBoard.score });
     activeBallKeys.forEach(k => entities[k].velocity = [0, 0]);
   }
@@ -272,22 +286,21 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
       scoreBoard.lives += 1;
       break;
     case 'MULTI':
-      if (currentBallCount >= 12) return;
+      if (currentBallCount >= 20) return;
       const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
-      currentBallKeys.forEach(key => {
-        const original = entities[key];
-        const splitCount = currentBallCount > 6 ? 1 : 2;
-        for (let i = 1; i <= splitCount; i++) {
-          const newId = `ball_${Date.now()}_${i}_${Math.random()}`;
-          entities[newId] = {
-            ...original,
-            position: [...original.position],
-            velocity: [original.velocity[0] + (i === 1 ? -2 : 2), -Math.abs(original.velocity[1])],
-            renderer: Ball,
-            trail: [],
-          };
-        }
-      });
+      const remaining = 20 - currentBallCount;
+      const toSpawn = Math.min(2, remaining); // Always just 2 new balls
+      const sourceBall = entities[currentBallKeys[0]]; // Only the first ball
+      for (let i = 0; i < toSpawn; i++) {
+        const newId = `ball_${Date.now()}_${i}_${Math.random()}`;
+        entities[newId] = {
+          ...sourceBall,
+          position: [...sourceBall.position],
+          velocity: [sourceBall.velocity[0] + (i === 0 ? -2.5 : 2.5), -Math.abs(sourceBall.velocity[1])],
+          renderer: Ball,
+          trail: [],
+        };
+      }
       break;
   }
 };

@@ -5,7 +5,7 @@ const options = {
   ignoreAndroidSystemSettings: false,
 };
 
-export const triggerHaptic = (type = "impactLight") => {
+export const triggerHaptic = (type: any = "impactLight") => {
   if (ReactNativeHapticFeedback && typeof ReactNativeHapticFeedback.trigger === 'function') {
     ReactNativeHapticFeedback.trigger(type, options);
   } else {
