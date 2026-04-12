@@ -17,7 +17,7 @@ import { triggerHaptic } from './src/utils/haptics';
 const LEVEL_DIFFICULTY: Record<string, number> = {
   BD: 1, JP: 1, TR: 2, PS: 2, SA: 2, US: 2,
   NP: 3, FORTRESS: 3, UK: 3, BR: 4, KR: 3,
-  HOURGLASS: 5, DIAMOND_CORE: 5,
+  HOURGLASS: 5, DIAMOND_CORE: 5, SA_MAZE: 5,
 };
 
 export default function App() {
@@ -55,7 +55,16 @@ export default function App() {
     try {
       const savedLevels = await AsyncStorage.getItem('@unlocked_levels');
       const savedScores = await AsyncStorage.getItem('@high_scores');
-      if (savedLevels) setUnlockedLevels(JSON.parse(savedLevels));
+      if (savedLevels) {
+        const parsedLevels: number[] = JSON.parse(savedLevels);
+        // Force unlock South Africa map
+        const saIndex = FLAG_LEVELS.findIndex(l => l.id === 'SA_MAZE');
+        if (saIndex !== -1 && !parsedLevels.includes(saIndex)) {
+          parsedLevels.push(saIndex);
+          saveProgress(parsedLevels, JSON.parse(savedScores || '{}'));
+        }
+        setUnlockedLevels(parsedLevels);
+      }
       if (savedScores) setHighScores(JSON.parse(savedScores));
     } catch (e) { console.log('Error loading progress', e); }
   };

@@ -25,7 +25,7 @@ export const getEntities = (levelIndex = 0) => {
   const brickRows = level.gridRows ?? BRICK_ROWS;
   const brickCols = level.gridCols ?? BRICK_COLS;
   const brickWidth = (SCREEN_WIDTH - 40) / brickCols;
-  const brickHeight = level.gridCols ? brickWidth * 0.6 : BRICK_HEIGHT;
+  const brickHeight = level.gridCols ? brickWidth * 0.8 : BRICK_HEIGHT;
 
   const paddleMultiplier = level.paddleSizeMultiplier ?? 1.0;
   const speedScale = level.initialBallSpeed ? level.initialBallSpeed / 8.6 : 1.0;
@@ -61,7 +61,7 @@ export const getEntities = (levelIndex = 0) => {
       let brickColor = level.backgroundColor;
       const patternResult = level.pattern(r, c, brickRows, brickCols);
 
-      if (patternResult === 'NONE' && !isBorder) continue; // Skip bricks for non-rectangular flags
+      if (patternResult === 'NONE') continue; 
       
       if (patternResult === 'circle') brickColor = level.circleColor ?? level.backgroundColor;
       else if (patternResult === 'RED') brickColor = '#EE2335';
@@ -69,6 +69,7 @@ export const getEntities = (levelIndex = 0) => {
       else if (patternResult === 'WHITE') brickColor = '#FFFFFF';
       else if (patternResult === 'GREEN') brickColor = '#007A3D';
       else if (patternResult === 'BLUE') brickColor = '#002664';
+      else if (patternResult === 'GOLD') brickColor = '#FFB612';
 
       entities[brickId] = {
         position: [

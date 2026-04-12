@@ -11,6 +11,7 @@ import { Brazil } from './Brazil';
 import { SouthKorea } from './SouthKorea';
 import { Hourglass } from './Hourglass';
 import { DiamondCore } from './DiamondCore';
+import { SouthAfricaMaze } from './SouthAfricaMaze';
 import { LevelConfig } from './types';
 
 export const FLAG_LEVELS: LevelConfig[] = [
@@ -27,6 +28,7 @@ export const FLAG_LEVELS: LevelConfig[] = [
   SouthKorea,
   Hourglass,
   DiamondCore,
+  SouthAfricaMaze,
 ];
 
 export * from './types';
