@@ -10,4 +10,6 @@ export interface LevelConfig {
   paddleSizeMultiplier?: number;
   gridRows?: number;
   gridCols?: number;
+  mazeEnabled?: boolean;
+  mazeRows?: number;
 }

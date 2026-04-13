@@ -6,7 +6,7 @@ const MovePaddle = (entities: any, { touches }: any) => {
   const paddle = entities.paddle;
 
   touches
-    .filter((t: any) => t.type === 'move' || t.type === 'press')
+    .filter((t: any) => t.type === 'move' || t.type === 'press' || t.type === 'start')
     .forEach((t: any) => {
       if (paddle) {
         let newX = t.event.pageX;

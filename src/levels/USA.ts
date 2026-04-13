@@ -3,7 +3,9 @@ import { LevelConfig } from './types';
 export const USA: LevelConfig = {
   name: 'USA',
   id: 'US',
-  backgroundColor: '#B22234',
+  backgroundColor: '#002868',
+  mazeEnabled: true,
+  mazeRows: 10,
   pattern: (r, c, rows, cols) => {
     // Zig-Zag Gauntlet: Alternating stone blocks on sides
     if (r === 1 && c < 5) return 'STONE';

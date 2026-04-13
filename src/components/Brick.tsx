@@ -8,6 +8,8 @@ interface BrickProps {
   status: boolean;
   type?: 'regular' | 'stone';
   hp?: number;
+  isTrap?: boolean;
+  trapTimer?: number;
 }
 
 const Brick: React.FC<BrickProps> = ({ 
@@ -16,7 +18,9 @@ const Brick: React.FC<BrickProps> = ({
   color = '#FFD54F', 
   status, 
   type = 'regular',
-  hp = 1 
+  hp = 1,
+  isTrap = false,
+  trapTimer = 0
 }) => {
   if (!status) return null;
 
@@ -33,41 +37,72 @@ const Brick: React.FC<BrickProps> = ({
     top: y,
     width,
     height,
-    backgroundColor: isStone ? '#78909C' : color,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: isStone ? '#455A64' : 'rgba(255,255,255,0.3)',
+    backgroundColor: isTrap ? '#FFD700' : (isStone ? '#78909C' : color),
+    borderRadius: 6,
+    borderWidth: isTrap ? 3 : 2,
+    borderColor: isTrap ? '#FF0000' : '#000000',
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-  }), [x, y, width, height, isStone, color]);
+    overflow: 'hidden',
+    // Slight comic shadow
+    shadowColor: isTrap ? '#FF0000' : '#000',
+    shadowOffset: { width: isTrap ? 0 : 2, height: isTrap ? 0 : 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: isTrap ? 10 : 0,
+    elevation: 3,
+  }), [x, y, width, height, isStone, color, isTrap]);
 
   return (
-    <View style={baseStyle}>
-      {/* Visual cracks for multi-hit STONE bricks (HP 2 = single cross, HP 1 = double cross) */}
-      {isStone && hp === 2 && (
+    <View style={baseStyle as any}>
+      {/* Top Highlight Strip */}
+      <View 
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '35%',
+          backgroundColor: 'rgba(255,255,255,0.2)',
+        }} 
+      />
+
+      {/* Visual cracks for multi-hit STONE bricks */}
+      {isStone && hp < 3 && (
         <View style={styles.crackContainer}>
-          <View style={[styles.crack, { transform: [{ rotate: '45deg' }] }]} />
-          <View style={[styles.crack, { transform: [{ rotate: '-45deg' }] }]} />
+          <View style={[styles.crack, { width: '80%', transform: [{ rotate: '45deg' }] }]} />
+          <View style={[styles.crack, { width: '80%', transform: [{ rotate: '-45deg' }] }]} />
+          {hp === 1 && (
+            <>
+              <View style={[styles.crack, { width: '60%', top: '30%', transform: [{ rotate: '15deg' }] }]} />
+              <View style={[styles.crack, { width: '60%', bottom: '30%', transform: [{ rotate: '-15deg' }] }]} />
+            </>
+          )}
         </View>
       )}
-      {isStone && hp === 1 && (
-        <View style={styles.crackContainer}>
-          <View style={[styles.crack, { transform: [{ rotate: '45deg' }] }]} />
-          <View style={[styles.crack, { transform: [{ rotate: '-45deg' }] }]} />
-          {/* Second cross offset slightly for "damaged" look */}
-          <View style={[styles.crack, { backgroundColor: 'rgba(0,0,0,0.7)', transform: [{ rotate: '15deg' }] }]} />
-          <View style={[styles.crack, { backgroundColor: 'rgba(0,0,0,0.7)', transform: [{ rotate: '-15deg' }] }]} />
+
+      {/* Trap Mine Visuals */}
+      {isTrap && (
+        <View style={styles.trapOverlay}>
+          <Text style={{ fontSize: width * 0.5 }}>💣</Text>
         </View>
       )}
     </View>
   );
 };
 
+import { Text } from 'react-native';
+
 const styles = StyleSheet.create({
   crackContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  trapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,215,0,0.2)', // Golden tint
   },
   crack: {
     position: 'absolute',

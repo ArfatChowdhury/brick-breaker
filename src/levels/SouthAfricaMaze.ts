@@ -8,35 +8,7 @@ export const SouthAfricaMaze: LevelConfig = {
   paddleSizeMultiplier: 0.7,
   gridCols: 20,
   gridRows: 24,
-  pattern: (r, c) => {
-    // 1. SYMMETRICAL COLOR MAP (24 Rows x 20 Cols)
-    const SA_COLORS = [
-      "YGRRRRRRRRRRRRRRRRRR", // 0
-      "KYGRRRRRRRRRRRRRRRRR", // 1
-      "KYGRRRRRRRRRRRRRRRRR", // 2
-      "KKYGRRRRRRRRRRRRRRRR", // 3
-      "KKYWGRRRRRRRRRRRRRRR", // 4
-      "KKKYGRRRRRRRRRRRRRRR", // 5
-      "KKKYWGRRRRRRRRRRRRRR", // 6
-      "KKKKYWGRRRRRRRRRRRRR", // 7
-      "KKKKYWGRRRRRRRRRRRRR", // 8
-      "KKKKYWWGRRRRRRRRRRRR", // 9
-      "KKKKKYWWGWWWWWWWWWWW", // 10
-      "KKKKKYWWGGGGGGGGGGGG", // 11
-      "KKKKKYWWGGGGGGGGGGGG", // 12
-      "KKKKKYWWGWWWWWWWWWWW", // 13
-      "KKKKYWWGBBBBBBBBBBBB", // 14
-      "KKKKYWGBBBBBBBBBBBBB", // 15
-      "KKKKYWGBBBBBBBBBBBBB", // 16
-      "KKKYWGBBBBBBBBBBBBBB", // 17
-      "KKKYGBBBBBBBBBBBBBBB", // 18
-      "KKYWGBBBBBBBBBBBBBBB", // 19
-      "KKYGBBBBBBBBBBBBBBBB", // 20
-      "KYGBBBBBBBBBBBBBBBBB", // 21
-      "KYGBBBBBBBBBBBBBBBBB", // 22
-      "YGBBBBBBBBBBBBBBBBBB", // 23
-    ];
-
+  pattern: (r, c, gridRows, gridCols) => {
     // 2. MAZE MASK (24 Rows x 20 Cols)
     const MAZE_MASK = [
       "SSSSSSSSSSSSSSSSSSSS", // 0
@@ -57,24 +29,51 @@ export const SouthAfricaMaze: LevelConfig = {
       "SCCCCCCCCCCCCCCCCCCS", // 15
       "SCCCCCCCCCCCCCCCCCCS", // 16
       "SCCCCCCCCCCCCCCCCCCS", // 17
-      "S.SSSSSSSSSSSSSSS.S", // 18: START OF MAZE (Reduced from 16)
+      "S.SSSSSSSSSSSSSSS.S", // 18: START OF MAZE
       "S...S...S...S...S.S", // 19
       "S.S.S.S.S.S.S.S.S.S", // 20
       "S.S.S.S.S.S.S.S.S.S", // 21
       "SCCCCCCCCCCCCCCCCCCS", // 22
-      "SSSSSSSSS...SSSSSSSS", // 23: ENTRANCE
+      "SSSSSSSSSSSSSSSSSSSS", // 23: SEALED BOTTOM
     ];
 
     const maskChar = MAZE_MASK[r]?.[c];
     if (maskChar === '.') return 'NONE';
     if (maskChar === 'S') return 'STONE3';
 
-    const colorChar = SA_COLORS[r]?.[c] || 'G';
-    const colorMap: Record<string, string> = {
-      'R': 'RED', 'B': 'BLUE', 'G': 'GREEN',
-      'W': 'WHITE', 'K': 'BLACK', 'Y': 'GOLD'
-    };
+    // 1. DYNAMIC COLOR CALCULATION for Diagonal Y
+    // Middle horizontal line is at row 11-12
+    const middleY = 11.5;
+    const distFromMiddle = Math.abs(r - middleY);
+    
+    // Triangle (Black with Gold border)
+    // Triangle is on the left, growing to about col 7 at the middle
+    const triangleWidth = Math.max(0, 7.5 - distFromMiddle * 0.65);
+    if (c < triangleWidth - 1) return 'BLACK';
+    if (c < triangleWidth) return 'GOLD';
 
-    return colorMap[colorChar] || 'GREEN';
+    // Green Y arms (Diagonal)
+    // The arms start from top-left and bottom-left and converge to the middle horizontal bar
+    // At c=8, they should be near the middle (distFromMiddle ~ 1)
+    // At c=0, they should be at the top/bottom (distFromMiddle ~ 11)
+    // Formula: distFromMiddle < (8 - c) * 1.5 ?
+    const armWidthAtC = (7.5 - c) * 1.5;
+    const isInsideArm = distFromMiddle < armWidthAtC + 2;
+    const isInsideGreen = distFromMiddle < armWidthAtC + 1;
+
+    // Horizontal part of the Y (starting after triangle)
+    if (c >= 7 && distFromMiddle < 2.5) {
+        if (distFromMiddle < 1.5) return 'GREEN';
+        return 'WHITE';
+    }
+
+    // Diagonal arms
+    if (c < 8 && isInsideArm) {
+        if (isInsideGreen) return 'GREEN';
+        return 'WHITE';
+    }
+
+    // Top Red, Bottom Blue
+    return r < middleY ? 'RED' : 'BLUE';
   }
 };

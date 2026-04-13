@@ -7,13 +7,14 @@ import ScoreBoard from '../components/ScoreBoard';
 import PowerUp from '../components/PowerUp';
 
 import { FLAG_LEVELS } from '../levels';
+import { generateMaze } from '../utils/MazeGenerator';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Game Constants
 export const PADDLE_WIDTH = SCREEN_WIDTH * 0.25;
 export const PADDLE_HEIGHT = 20;
-export const BALL_RADIUS = 6;
+export const BALL_RADIUS = 10;
 export const BRICK_ROWS = 16;
 export const BRICK_COLS = 14;
 export const BRICK_HEIGHT = 15;
@@ -36,6 +37,13 @@ export const getEntities = (levelIndex = 0) => {
       lives: 3,
       level: levelIndex,
       powerUpState: {},
+      missiles: 3,
+      mines: 2,
+      weaponMode: 'NORMAL',
+      lastHitId: null,
+      shake: 0,
+      multiplier: 1,
+      streak: 0,
       renderer: ScoreBoard,
     },
     paddle: {
@@ -48,6 +56,7 @@ export const getEntities = (levelIndex = 0) => {
       velocity: [5 * speedScale, -7 * speedScale],
       radius: BALL_RADIUS * paddleMultiplier,
       renderer: Ball,
+      trail: [],
     },
   };
 
@@ -77,13 +86,41 @@ export const getEntities = (levelIndex = 0) => {
           80 + r * brickHeight + brickHeight / 2,
         ],
         size: [brickWidth - 1, brickHeight - 1],
-        color: isBorder ? '#78909C' : brickColor,
+        color: (isBorder && patternResult === 'background') ? '#78909C' : brickColor,
         status: true,
         permanent: isBorder || patternResult === 'STONE3',
         type: (patternResult === 'STONE' || patternResult === 'STONE3' || isBorder) ? 'stone' : 'regular',
         hp: patternResult === 'STONE3' ? 3 : (isBorder ? 2 : 1),
         renderer: Brick,
       };
+    }
+  }
+
+  // --- PHASE 2: Append Random Maze ---
+  if (level.mazeEnabled) {
+    const mazeRows = level.mazeRows ?? 8;
+    const maze = generateMaze(mazeRows, brickCols);
+
+    for (let r = 0; r < mazeRows; r++) {
+      for (let c = 0; c < brickCols; c++) {
+        const char = maze[r][c];
+        if (char === 'S') {
+          const brickId = `maze_brick_${r}_${c}`;
+          entities[brickId] = {
+            position: [
+              20 + c * brickWidth + brickWidth / 2,
+              80 + (brickRows + r) * brickHeight + brickHeight / 2,
+            ],
+            size: [brickWidth - 1, brickHeight - 1],
+            color: '#78909C', // Stone wall color
+            status: true,
+            permanent: true,
+            type: 'stone',
+            hp: 3,
+            renderer: Brick,
+          };
+        }
+      }
     }
   }
 

@@ -52,6 +52,83 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       p.opacity -= 0.1;
       if (p.opacity <= 0) delete entities[key];
       else particleKeys.push(key);
+    } else if (key.startsWith('mine_')) {
+      const mine = entities[key];
+      const targetBrick = entities[mine.attachedTo];
+      
+      // 1. Move mine from paddle to target brick (Launch Animation)
+      if (targetBrick) {
+        const dx = targetBrick.position[0] - mine.position[0];
+        const dy = targetBrick.position[1] - mine.position[1];
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 5) {
+          mine.position[0] += dx * 0.2;
+          mine.position[1] += dy * 0.2;
+        } else {
+          mine.position = [...targetBrick.position];
+        }
+      }
+
+      if (mine.blastTimer !== undefined) {
+        mine.blastTimer -= 1;
+        if (mine.blastTimer <= 0) {
+          explodeMine(entities, mine.position, mine.attachedTo, dispatch);
+          if (targetBrick) {
+            targetBrick.status = false;
+            scoreBoard._bricksDirty = true;
+          }
+        }
+      }
+    } else if (key.startsWith('missile_')) {
+      const m = entities[key];
+      const dx = m.target[0] - m.position[0];
+      const dy = m.target[1] - m.position[1];
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      if (dist < m.size / 2) {
+        // Impact!
+        spawnBlastWave(entities, m.position);
+        delete entities[key];
+        
+        // Explode and destroy bricks nearby
+        const EXPLOSION_RADIUS = 75;
+        scoreBoard._activeBrickKeys.forEach(bk => {
+          const b = entities[bk];
+          const bDist = Math.sqrt(Math.pow(b.position[0] - m.position[0], 2) + Math.pow(b.position[1] - m.position[1], 2));
+          if (bDist < EXPLOSION_RADIUS) {
+            b.hp -= 3; // Instant destroy
+            if (b.hp <= 0) {
+              b.status = false;
+              scoreBoard.score += (b.type === 'stone' ? 50 : 10) * scoreBoard.multiplier;
+              scoreBoard._bricksDirty = true;
+              spawnParticles(entities, b.position, b.color);
+            }
+          }
+        });
+        triggerHaptic('impactHeavy');
+        dispatch({ type: 'brick-break' });
+        scoreBoard.shake += 10;
+      } else {
+        const speed = 10;
+        const timeElapsed = (Date.now() - m.startTime) / 1000;
+        
+        // Base Direction
+        const baseDirX = dx / dist;
+        const baseDirY = dy / dist;
+        
+        // Perpendicular Vector for Spiral (90deg rotate)
+        const perpX = -baseDirY;
+        const perpY = baseDirX;
+        
+        // Spiral amplitude diminishes as it gets closer
+        const amplitude = Math.min(dist / 3, 40) * Math.sin(timeElapsed * 15);
+        
+        m.position[0] += (baseDirX * speed) + (perpX * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
+        m.position[1] += (baseDirY * speed) + (perpY * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
+        
+        // Point towards target, but slightly offset by spiral for natural look
+        m.angle = Math.atan2(dy, dx);
+      }
     }
   }
 
@@ -83,6 +160,47 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     delete scoreBoard.powerUpState.FIRE;
   }
 
+  // Decay Screen Shake & Flash
+  if (scoreBoard.shake > 0) {
+    scoreBoard.shake *= 0.88;
+    if (scoreBoard.shake < 0.1) scoreBoard.shake = 0;
+    if (scoreBoard.shake > 2) dispatch({ type: 'shake', intensity: scoreBoard.shake });
+  }
+  if (paddle.flash > 0) paddle.flash -= 1;
+  
+  // 0c. Environmental Trap Mine System
+  const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
+  const bottomBricks = allBrickKeys.filter(k => {
+    const b = entities[k];
+    return b.status && b.position[1] > SCREEN_HEIGHT * 0.65;
+  });
+  
+  if (bottomBricks.length > 0 && !scoreBoard.trapActive && (scoreBoard.trapAttempts || 0) < 4) {
+    // Spawn a new trap mine
+    const randomKey = bottomBricks[Math.floor(Math.random() * bottomBricks.length)];
+    const brick = entities[randomKey];
+    brick.isTrap = true;
+    scoreBoard.trapActive = true;
+    scoreBoard.trapId = randomKey;
+    scoreBoard.trapTimer = 15 * 60; // 15 seconds at 60fps
+    scoreBoard.trapAttempts = (scoreBoard.trapAttempts || 0) + 1;
+  }
+  
+  if (scoreBoard.trapActive) {
+    scoreBoard.trapTimer -= 1;
+    if (scoreBoard.trapTimer <= 0) {
+      // Teleport
+      const currentBrick = entities[scoreBoard.trapId];
+      if (currentBrick) delete currentBrick.isTrap;
+      scoreBoard.trapActive = false;
+    }
+  }
+
+  // Update Visual States for Ball/Paddle
+  const isFireActive = !!scoreBoard.powerUpState.FIRE;
+  paddle.isFire = isFireActive;
+  paddle.color = isFireActive ? '#FF5252' : '#4DB6AC';
+
   // --- SUB-STEPPING PHYSICS LOOP ---
   // We run the physics twice per frame at half velocity to eliminate tunneling (passing through bricks)
   const SUB_STEPS = 2;
@@ -96,8 +214,11 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       ball.position[1] = paddle.position[1] - paddle.size[1] / 2 - ball.radius - 2;
       ball.velocity = [0, 0];
       ball.trail = [];
+      ball.isFire = isFireActive;
       return;
     }
+    
+    ball.isFire = isFireActive;
 
     for (let s = 0; s < SUB_STEPS; s++) {
       // 1. Move ball by half its velocity
@@ -155,13 +276,34 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
       // 4. Paddle Collision
       const pX = paddle.position[0], pY = paddle.position[1], pW = paddle.size[0], pH = paddle.size[1];
+      const pTop = pY - pH / 2;
+      const pBottom = pY + pH / 2;
+      const pLeft = pX - pW / 2;
+      const pRight = pX + pW / 2;
+
+      // 4a. Side Paddle Collision (Detects hitting the vertical edges)
+      if (ball.position[1] + ball.radius > pTop && ball.position[1] - ball.radius < pBottom) {
+        if (ball.velocity[0] > 0 && ball.position[0] + ball.radius >= pLeft && ball.position[0] < pLeft) {
+          ball.position[0] = pLeft - ball.radius - 1;
+          ball.velocity[0] = -Math.abs(ball.velocity[0]);
+          triggerHaptic('impactMedium');
+          dispatch({ type: 'paddle-hit' });
+        } else if (ball.velocity[0] < 0 && ball.position[0] - ball.radius <= pRight && ball.position[0] > pRight) {
+          ball.position[0] = pRight + ball.radius + 1;
+          ball.velocity[0] = Math.abs(ball.velocity[0]);
+          triggerHaptic('impactMedium');
+          dispatch({ type: 'paddle-hit' });
+        }
+      }
+
+      // 4b. Top Paddle Collision (Original Logic)
       if (ball.velocity[1] > 0 && 
-          ball.position[1] + ball.radius >= pY - pH / 2 &&
-          ball.position[1] - ball.radius <= pY + pH / 2 &&
-          ball.position[0] >= pX - pW / 2 &&
-          ball.position[0] <= pX + pW / 2) {
+          ball.position[1] + ball.radius >= pTop &&
+          ball.position[1] - ball.radius <= pBottom &&
+          ball.position[0] >= pLeft &&
+          ball.position[0] <= pRight) {
         
-        ball.position[1] = pY - pH / 2 - ball.radius - 1;
+        ball.position[1] = pTop - ball.radius - 1;
         const hitPos = (ball.position[0] - pX) / (pW / 2);
         ball.velocity[0] = hitPos * 6;
         ball.velocity[1] = -Math.abs(ball.velocity[1]);
@@ -173,6 +315,11 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         }
         if (Math.abs(ball.velocity[1]) < MIN_VY) ball.velocity[1] = -MIN_VY;
 
+        scoreBoard.multiplier = 1;
+        scoreBoard.streak = 0;
+        paddle.flash = 6; // Flash for 6 frames
+
+        spawnParticles(entities, ball.position, '#FFFFFF');
         triggerHaptic('impactMedium');
         dispatch({ type: 'paddle-hit' });
       }
@@ -223,14 +370,33 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           brick.hp -= (hitSide === 'TOP' ? 3 : 1);
           triggerHaptic('impactLight');
           
-          if (brick.hp <= 0) {
+          if (brick.hp <= 0 || brick.hasMine || brick.isTrap) {
+            const isMineHit = brick.hasMine;
+            const isTrapHit = brick.isTrap;
             brick.status = false;
-            scoreBoard.score += brick.type === 'stone' ? 50 : 10;
+            
+            scoreBoard.streak += 1;
+            scoreBoard.multiplier = 1 + Math.floor(scoreBoard.streak / 6);
+            
+            if (isTrapHit) {
+              scoreBoard.score += 1000; // Big Bonus!
+              scoreBoard.trapActive = false;
+              scoreBoard.shake += 25;
+              spawnBlastWave(entities, brick.position);
+            } else {
+              scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * scoreBoard.multiplier;
+            }
+            
             scoreBoard._bricksDirty = true;
-            triggerHaptic('impactMedium');
-            dispatch({ type: brick.type === 'stone' ? 'brick-hit' : 'brick-break' });
-            spawnParticles(entities, brick.position, brick.color);
-            attemptPowerUpSpawn(entities, brick.position);
+            triggerHaptic('impactHeavy');
+            
+            if (isMineHit) {
+              explodeMine(entities, brick.position, bKey, dispatch);
+            } else {
+              dispatch({ type: brick.type === 'stone' ? 'brick-hit' : 'brick-break' });
+              spawnParticles(entities, brick.position, brick.color);
+              attemptPowerUpSpawn(entities, brick.position);
+            }
           } else {
             dispatch({ type: 'brick-hit' });
           }
@@ -272,7 +438,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
 const attemptPowerUpSpawn = (entities: any, position: [number, number]) => {
   if (Math.random() < 0.18) {
-    const types: ('WIDE' | 'MULTI' | 'FIRE' | 'LIFE')[] = ['WIDE', 'MULTI', 'FIRE', 'LIFE'];
+    const types: ('WIDE' | 'MULTI' | 'PLUS3' | 'FIRE' | 'LIFE')[] = ['WIDE', 'MULTI', 'PLUS3', 'FIRE', 'LIFE'];
     const type = types[Math.floor(Math.random() * types.length)];
     const id = `powerup_${Date.now()}_${Math.random()}`;
     entities[id] = {
@@ -298,28 +464,117 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
     case 'LIFE':
       scoreBoard.lives += 1;
       break;
-    case 'MULTI':
-      if (currentBallCount >= 30) return;
+    case 'MULTI': {
+      // TRIPLE logic: Current count * 3 total. If we have N, add 2N.
       const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
-      const remaining = 30 - currentBallCount;
-      const toSpawn = Math.min(6, remaining); // Optimization: Increased from 2 to 6
       const sourceBall = entities[currentBallKeys[0]];
-      for (let i = 0; i < toSpawn; i++) {
-        const newId = `ball_${Date.now()}_${i}_${Math.random()}`;
+      if (!sourceBall) return;
+      
+      const toAddPerBall = 2; // Each existing ball spawns 2 more to TRIPLE
+      currentBallKeys.forEach((key, bIdx) => {
+        const parentBall = entities[key];
+        for (let i = 0; i < toAddPerBall; i++) {
+          const newId = `ball_${Date.now()}_${bIdx}_${i}_${Math.random()}`;
+          const angleOffset = (i === 0 ? -1 : 1) * 0.5;
+          entities[newId] = {
+            ...parentBall,
+            position: [...parentBall.position],
+            velocity: [
+              parentBall.velocity[0] + angleOffset * 4,
+              parentBall.velocity[1] + (Math.random() - 0.5) * 2
+            ],
+            renderer: Ball,
+            trail: [],
+          };
+        }
+      });
+      break;
+    }
+    case 'PLUS3': {
+      // Add exactly 3 more balls
+      const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
+      const sourceBall = entities[currentBallKeys[0]];
+      if (!sourceBall) return;
+
+      for (let i = 0; i < 3; i++) {
+        const newId = `ball_plus_${Date.now()}_${i}`;
         entities[newId] = {
           ...sourceBall,
           position: [...sourceBall.position],
-          velocity: [sourceBall.velocity[0] + (i === 0 ? -2.5 : 2.5), -Math.abs(sourceBall.velocity[1])],
+          velocity: [
+            (i - 1) * 4, // Spread: left, straight, right
+            -Math.abs(sourceBall.velocity[1]) || -8
+          ],
           renderer: Ball,
           trail: [],
         };
       }
       break;
+    }
   }
 };
 
+const explodeMissile = (entities: any, position: [number, number], dispatch: any) => {
+  triggerHaptic('notificationSuccess');
+  dispatch({ type: 'brick-break' });
+  
+  // Destroy bricks in a small radius (about 50-60 pixels)
+  const brickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
+  brickKeys.forEach(key => {
+    const b = entities[key];
+    if (!b.status) return;
+    const dist = Math.sqrt(Math.pow(b.position[0] - position[0], 2) + Math.pow(b.position[1] - position[1], 2));
+    if (dist < 60) {
+      b.status = false;
+      entities.scoreBoard.score += 20;
+      entities.scoreBoard._bricksDirty = true;
+      spawnParticles(entities, b.position, b.color || '#FFF');
+    }
+  });
+};
+
+const spawnBlastWave = (entities: any, position: [number, number]) => {
+  const blastId = `blast_${Date.now()}`;
+  entities[blastId] = {
+    position,
+    size: 150,
+    renderer: require('../components/BlastWave').default,
+  };
+  // Automatically remove after 500ms
+  setTimeout(() => { delete entities[blastId]; }, 500);
+};
+
+const explodeMine = (entities: any, position: [number, number], brickId: string, dispatch: any) => {
+  spawnBlastWave(entities, position);
+  entities.scoreBoard.shake += 15;
+  
+  triggerHaptic('notificationError');
+  dispatch({ type: 'brick-break' });
+  
+  // Remove mine visual entity
+  delete entities[`mine_${brickId}`];
+
+  // Destroy bricks in a larger radius for the mine (80-100 pixels)
+  const brickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
+  brickKeys.forEach(key => {
+    const b = entities[key];
+    if (!b.status) return;
+    const dist = Math.sqrt(Math.pow(b.position[0] - position[0], 2) + Math.pow(b.position[1] - position[1], 2));
+    if (dist < 100) {
+      b.status = false;
+      entities.scoreBoard.score += 30;
+      entities.scoreBoard._bricksDirty = true;
+      spawnParticles(entities, b.position, b.color || '#F44336');
+    }
+  });
+};
+
 const spawnParticles = (entities: any, position: [number, number], color: string) => {
-  for (let i = 0; i < 3; i++) { // Optimization: Reduced from 5 to 3
+  // Performance Throttling: Stop particles if there are too many balls
+  const ballCount = Object.keys(entities).filter(k => k.startsWith('ball_')).length;
+  if (ballCount > 80) return;
+
+  for (let i = 0; i < 3; i++) {
     const id = `p_${Date.now()}_${i}_${Math.random()}`;
     entities[id] = {
       position: [...position],

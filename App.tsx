@@ -12,6 +12,7 @@ import { FLAG_LEVELS } from './src/levels';
 import { playSound } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
+import WeaponSystem from './src/systems/WeaponSystem';
 
 // Difficulty stars for each level (1-5)
 const LEVEL_DIFFICULTY: Record<string, number> = {
@@ -30,10 +31,13 @@ export default function App() {
   const [win, setWin] = useState(false);
   const [paused, setPaused] = useState(false);
   const [waitingToStart, setWaitingToStart] = useState(true);
+  const [weaponMode, setWeaponMode] = useState<'NORMAL' | 'AIM' | 'MINE'>('NORMAL');
   const gameEngineRef = useRef<any>(null);
 
-  // Pulsing animation for TAP TO SERVE
+  // Visual Polish Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const introAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (waitingToStart && !paused) {
@@ -100,7 +104,22 @@ export default function App() {
         playSound('lose');
         setWaitingToStart(true);
         break;
+      case 'shake':
+        triggerShake(e.intensity);
+        break;
+      case 'weapon-mode-change':
+        setWeaponMode(e.mode);
+        break;
     }
+  };
+
+  const triggerShake = (intensity: number) => {
+    const val = intensity * 0.8;
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: { x: (Math.random()-0.5)*val, y: (Math.random()-0.5)*val }, duration: 40, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: { x: (Math.random()-0.5)*val, y: (Math.random()-0.5)*val }, duration: 40, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: { x: 0, y: 0 }, duration: 40, useNativeDriver: true }),
+    ]).start();
   };
 
   const handleWin = (finalScore: number) => {
@@ -128,6 +147,14 @@ export default function App() {
       const ents = getEntities(index);
       ents.scoreBoard.waitingToStart = true;
       gameEngineRef.current.swap(ents);
+      
+      // Trigger Level Intro
+      introAnim.setValue(0);
+      Animated.sequence([
+        Animated.timing(introAnim, { toValue: 1, duration: 600, useNativeDriver: true, easing: Easing.out(Easing.back(1.5)) }),
+        Animated.delay(1200),
+        Animated.timing(introAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start();
     }
   };
 
@@ -171,15 +198,28 @@ export default function App() {
       <View style={styles.container}>
         <StatusBar hidden />
 
+        {/* Background Pattern Layer */}
+        {!showMenu && (
+          <View style={styles.backgroundPattern} pointerEvents="none">
+            {Array.from({ length: 120 }).map((_, i) => (
+              <View key={i} style={styles.bgDot} />
+            ))}
+          </View>
+        )}
+
         {/* Game Layer */}
-        <View
-          style={[styles.gameWrapper, showMenu && { opacity: 0 }]}
+        <Animated.View
+          style={[
+            styles.gameWrapper, 
+            showMenu && { opacity: 0 },
+            { transform: shakeAnim.getTranslateTransform() }
+          ]}
           pointerEvents={showMenu ? 'none' : 'auto'}
         >
           <GameEngine
             ref={gameEngineRef}
             style={styles.gameContainer}
-            systems={[MovePaddle, Physics]}
+            systems={[MovePaddle, WeaponSystem, Physics]}
             entities={getEntities(currentLevel)}
             running={running && !paused && !win && !go}
             onEvent={onEvent}
@@ -199,6 +239,21 @@ export default function App() {
                 <Text style={styles.hudLevelText}>{FLAG_LEVELS[currentLevel]?.name?.toUpperCase()}</Text>
               </View>
 
+              {/* Level Intro Overlay */}
+              <Animated.View 
+                pointerEvents="none"
+                style={[styles.introOverlay, { 
+                  opacity: introAnim,
+                  transform: [
+                    { scale: introAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) },
+                    { translateY: introAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }
+                  ]
+                }]}
+              >
+                <Text style={styles.introSub}>DESTINATION</Text>
+                <Text style={styles.introTitle}>{FLAG_LEVELS[currentLevel]?.name?.toUpperCase()}</Text>
+              </Animated.View>
+
               {/* TAP TO SERVE — pulsing overlay */}
               {waitingToStart && !paused && (
                 <TouchableOpacity activeOpacity={1} onPress={launchBall} style={styles.serveOverlay}>
@@ -209,6 +264,15 @@ export default function App() {
                     <Text style={styles.serveSubText}>Move paddle to aim</Text>
                   </View>
                 </TouchableOpacity>
+              )}
+
+              {/* Weapon Instructions Overlay */}
+              {!waitingToStart && !paused && weaponMode !== 'NORMAL' && (
+                <View style={styles.weaponInstructionOverlay} pointerEvents="none">
+                  <Animated.Text style={[styles.weaponInstructionText, { transform: [{ scale: pulseAnim }] }]}>
+                    {weaponMode === 'AIM' ? '🚀 TAP ANYWHERE TO SHOOT' : '💣 TAP BRICK TO PLACE STICKY BOMB'}
+                  </Animated.Text>
+                </View>
               )}
 
               {/* Pause Overlay */}
@@ -233,15 +297,17 @@ export default function App() {
               )}
             </>
           )}
-        </View>
+        </Animated.View>
 
         {/* Main Menu */}
         {showMenu && (
           <View style={styles.menuContainer}>
             {/* Header */}
             <View style={styles.menuHeader}>
-              <Text style={styles.gameLogoSub}>🌍</Text>
-              <Text style={styles.gameLogo}>BrickStrike</Text>
+              <View style={styles.logoCircle}>
+                <Text style={styles.gameLogoSub}>🚀</Text>
+              </View>
+              <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
               <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
             </View>
 
@@ -250,32 +316,37 @@ export default function App() {
               contentContainerStyle={styles.levelGrid}
               showsVerticalScrollIndicator={false}
             >
-              {FLAG_LEVELS.map((lvl, index) => {
-                const isUnlocked = unlockedLevels.includes(index);
-                const best = highScores[lvl.id] || 0;
-                return (
-                  <TouchableOpacity
-                    key={lvl.id}
-                    disabled={!isUnlocked}
-                    onPress={() => startLevel(index)}
-                    style={[styles.levelCard, !isUnlocked && styles.levelCardLocked]}
-                    activeOpacity={0.75}
-                  >
-                    <View style={[styles.flagPreview, { backgroundColor: lvl.backgroundColor }]}>
-                      {!isUnlocked && (
-                        <View style={styles.lockOverlay}>
-                          <Text style={styles.lockIcon}>🔒</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.levelName}>{lvl.name}</Text>
-                    {renderDifficultyStars(lvl.id)}
-                    {isUnlocked && best > 0 && (
-                      <Text style={styles.bestScore}>⭐ {best}</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+              <Text style={styles.gridTitle}>CHOOSE YOUR DESTINATION</Text>
+              <View style={styles.gridContent}>
+                {FLAG_LEVELS.map((lvl, index) => {
+                  const isUnlocked = unlockedLevels.includes(index);
+                  const best = highScores[lvl.id] || 0;
+                  return (
+                    <TouchableOpacity
+                      key={lvl.id}
+                      disabled={!isUnlocked}
+                      onPress={() => startLevel(index)}
+                      style={[styles.levelCard, !isUnlocked && styles.levelCardLocked]}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.flagPreview, { backgroundColor: lvl.backgroundColor }]}>
+                        {!isUnlocked && (
+                          <View style={styles.lockOverlay}>
+                            <Text style={styles.lockIcon}>🔒</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.levelInfo}>
+                        <Text style={styles.levelName}>{lvl.name}</Text>
+                        {renderDifficultyStars(lvl.id)}
+                        {isUnlocked && best > 0 && (
+                          <Text style={styles.bestScore}>⭐ {best.toLocaleString()}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </ScrollView>
 
             <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
@@ -322,6 +393,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0A0F',
   },
+  backgroundPattern: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    paddingTop: 100,
+    opacity: 0.1,
+  },
+  bgDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FFFFFF',
+    margin: 20,
+  },
   gameContainer: { flex: 1 },
   gameWrapper: {
     flex: 1,
@@ -333,34 +419,35 @@ const styles = StyleSheet.create({
   // ── In-Game HUD ────────────────────────────
   hudLevelName: {
     position: 'absolute',
-    top: 24,
+    bottom: 40,
     left: 0, right: 0,
     alignItems: 'center',
     zIndex: 5,
   },
   hudLevelText: {
-    color: 'rgba(255,255,255,0.25)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 3,
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 2,
   },
   pauseButton: {
     position: 'absolute',
-    top: 16, right: 16,
+    top: 20, right: 20,
     zIndex: 20,
   },
   pauseButtonInner: {
-    width: 40, height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 44, height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFEB3B',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 3,
+    borderColor: '#000',
   },
   pauseIcon: {
-    color: '#FFF',
-    fontSize: 16,
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '900',
   },
 
   // ── Serve Overlay ──────────────────────────
@@ -368,215 +455,291 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
     zIndex: 15,
   },
   serveCard: {
     alignItems: 'center',
     paddingHorizontal: 40,
     paddingVertical: 24,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 30,
+    backgroundColor: '#FFEB3B',
+    borderWidth: 4,
+    borderColor: '#000',
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 10,
   },
   serveText: {
-    color: '#FFFFFF',
-    fontSize: 26,
+    color: '#000',
+    fontSize: 28,
     fontWeight: '900',
-    letterSpacing: 4,
+    letterSpacing: 2,
   },
   serveSubText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
+    color: 'rgba(0,0,0,0.6)',
+    fontSize: 13,
     marginTop: 6,
-    letterSpacing: 1,
+    fontWeight: '700',
   },
 
   // ── Pause Card ────────────────────────────
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 30,
   },
   pauseCard: {
-    width: '80%',
-    backgroundColor: '#16161E',
-    borderRadius: 24,
-    padding: 32,
+    width: '85%',
+    backgroundColor: '#FFEB3B',
+    borderRadius: 30,
+    padding: 30,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 4,
+    borderColor: '#000',
+    shadowColor: '#000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
   },
   pauseTitle: {
-    color: '#FFF',
-    fontSize: 32,
+    color: '#000',
+    fontSize: 36,
     fontWeight: '900',
-    letterSpacing: 6,
+    letterSpacing: 2,
     marginBottom: 4,
   },
   pauseLevel: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 13,
-    letterSpacing: 2,
-    marginBottom: 28,
+    color: 'rgba(0,0,0,0.5)',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 24,
   },
   pauseButtons: {
     width: '100%',
-    gap: 12,
+    gap: 15,
   },
 
   // ── Overlay Buttons ───────────────────────
   overlayBtn: {
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 16,
+    borderRadius: 20,
     alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#000',
   },
   overlayBtnText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '800',
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '900',
     letterSpacing: 1,
   },
-  btnResume: { backgroundColor: '#00C897' },
-  btnRestart: { backgroundColor: '#3E4560' },
-  btnExit: { backgroundColor: '#C62828' },
-  btnNext: { backgroundColor: '#FFD54F' },
+  btnResume: { backgroundColor: '#4CAF50' },
+  btnRestart: { backgroundColor: '#2196F3' },
+  btnExit: { backgroundColor: '#F44336' },
+  btnNext: { backgroundColor: '#FFC107' },
 
   // ── Result Card ───────────────────────────
   resultCard: {
-    width: '82%',
-    backgroundColor: '#14141C',
-    borderRadius: 28,
-    padding: 36,
+    width: '85%',
+    backgroundColor: '#FFEB3B',
+    borderRadius: 30,
+    padding: 30,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 4,
+    borderColor: '#000',
+    shadowColor: '#000',
+    shadowOffset: { width: 8, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
   },
-  resultEmoji: { fontSize: 52, marginBottom: 12 },
+  resultEmoji: { fontSize: 60, marginBottom: 10 },
   resultTitle: {
-    color: '#FFF',
-    fontSize: 30,
+    color: '#000',
+    fontSize: 34,
     fontWeight: '900',
-    letterSpacing: 3,
     marginBottom: 4,
   },
   resultLevel: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 14,
-    letterSpacing: 2,
-    marginBottom: 28,
+    color: 'rgba(0,0,0,0.5)',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 20,
   },
   resultButtons: {
     width: '100%',
-    gap: 10,
+    gap: 12,
   },
 
   // ── Main Menu ─────────────────────────────
   menuContainer: {
     flex: 1,
-    backgroundColor: '#0A0A0F',
+    backgroundColor: '#0F1014', // Extreme Dark
     paddingBottom: 20,
   },
   menuHeader: {
     alignItems: 'center',
-    paddingTop: 52,
-    paddingBottom: 28,
+    paddingTop: 60,
+    paddingBottom: 40,
+    backgroundColor: '#16171D',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: '#333',
+  },
+  logoCircle: {
+      width: 70, height: 70,
+      borderRadius: 35,
+      backgroundColor: '#4ECDC4',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 15,
+      borderWidth: 3,
+      borderColor: '#FFF',
   },
   gameLogoSub: {
-    fontSize: 36,
-    marginBottom: 8,
+    fontSize: 32,
   },
   gameLogo: {
-    color: '#FFD54F',
-    fontSize: 42,
+    color: '#FFF',
+    fontSize: 38,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: -1,
   },
   gameTagline: {
-    color: 'rgba(255,255,255,0.35)',
-    fontSize: 11,
-    letterSpacing: 6,
+    color: '#4ECDC4',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 3,
     marginTop: 4,
   },
 
   // ── Level Grid ─────────────────────────────
   levelGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 20,
-    paddingBottom: 10,
+    paddingBottom: 40,
+  },
+  gridTitle: {
+      color: '#666',
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 2,
+      textAlign: 'center',
+      marginTop: 25,
+      marginBottom: 15,
+  },
+  gridContent: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      paddingHorizontal: 10,
   },
   levelCard: {
-    width: 96,
+    width: '44%',
     margin: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#16161E',
+    backgroundColor: '#1C1D24',
     borderRadius: 16,
     padding: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: '#333',
   },
   levelCardLocked: {
-    opacity: 0.35,
+    opacity: 0.5,
+    backgroundColor: '#16171D',
+  },
+  levelInfo: {
+      flex: 1,
+      marginLeft: 10,
   },
   flagPreview: {
-    width: 72, height: 44,
+    width: 50, height: 35,
     borderRadius: 8,
-    marginBottom: 7,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  lockIcon: { fontSize: 18 },
+  lockIcon: { fontSize: 14 },
   levelName: {
-    color: '#DDD',
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 4,
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 2,
   },
   starsRow: {
     flexDirection: 'row',
-    marginBottom: 3,
   },
-  star: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.2)',
-    marginHorizontal: 0.5,
-  },
-  starActive: {
-    color: '#FFD54F',
-  },
+  star: { fontSize: 8, color: '#444' },
+  starActive: { color: '#FFD54F' },
   bestScore: {
-    color: '#FFD54F',
+    color: '#4ECDC4',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '900',
+    marginTop: 4,
   },
 
   // ── Reset Button ─────────────────────────
   resetButton: {
-    marginTop: 16,
-    marginHorizontal: 40,
+    marginTop: 40,
+    marginHorizontal: 80,
     paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: 'transparent',
+    borderRadius: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255,80,80,0.25)',
+    borderColor: '#333',
     alignItems: 'center',
   },
   resetText: {
-    color: 'rgba(255,80,80,0.7)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: '#666',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  introOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  introSub: {
+    color: '#4ECDC4',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 4,
+    marginBottom: 5,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+  },
+  introTitle: {
+    color: '#FFF',
+    fontSize: 56,
+    fontWeight: '900',
+    textAlign: 'center',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 4, height: 4 },
+    textShadowRadius: 10,
+  },
+  weaponInstructionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 200,
+  },
+  weaponInstructionText: {
+    color: '#FFEB3B',
+    fontSize: 22,
+    fontWeight: '900',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 4, height: 4 },
+    textShadowRadius: 8,
+    textAlign: 'center',
   },
 });

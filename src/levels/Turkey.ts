@@ -5,6 +5,8 @@ export const Turkey: LevelConfig = {
   id: 'TR',
   backgroundColor: '#E30A17',
   circleColor: '#FFFFFF',
+  mazeEnabled: true,
+  mazeRows: 10,
   pattern: (r, c) => {
     // S-Curve Gauntlet: Block left, then block right
     if (r === 1 && c < 10) return 'STONE';

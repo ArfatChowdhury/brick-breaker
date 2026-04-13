@@ -6,6 +6,8 @@ export const Japan: LevelConfig = {
   id: 'JP',
   backgroundColor: '#FFFFFF',
   circleColor: '#BC002D',
+  mazeEnabled: true,
+  mazeRows: 10,
   pattern: (r, c, rows, cols) => {
     // V-shaped entry: only center 4 columns open at top, wider lower down
     if (r === 0) return 'STONE'; // Top border all stone
