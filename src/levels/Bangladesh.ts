@@ -7,10 +7,10 @@ export const Bangladesh: LevelConfig = {
   circleColor: '#F42A41',
   initialBallSpeed: 9.5,
   paddleSizeMultiplier: 0.8,
-  gridCols: 20,
+  // gridCols is now dynamically calculated by the engine based on screen width
   gridRows: 25,
-  pattern: (r, c) => {
-    // 1. STRICTLY SEALED PERIMETER MASK (24 Rows x 20 Cols)
+  pattern: (r, c, gridRows, gridCols) => {
+    // 1. STRICTLY SEALED PERIMETER MASK (24 Rows x 20 Cols mapped)
     const BD_MASK = [
       "SSSSSSSSSSSSSSSSSSSS", // 0: CLOSED TOP
       "SCCCCCCCCCCCCCCCCCCS", // 1
@@ -39,27 +39,32 @@ export const Bangladesh: LevelConfig = {
       "SSSSSSSSSSSSSSSSSSSS", // 24: SEALED BOTTOM
     ];
 
-    const maskChar = BD_MASK[r]?.[c] || 'S';
+    // Map the dynamic column `c` (e.g. 0-25) into the 0-19 range of the mask
+    const MASK_WIDTH = 20;
+    const mappedC = Math.floor((c / gridCols) * MASK_WIDTH);
+    const maskChar = BD_MASK[r]?.[mappedC] || 'S';
 
-    // Stone walls - Ensure Sides are ALWAYS closed
-    if (maskChar === 'S' || c === 0 || c === 19) return 'STONE3';
+    // Stone walls - Ensure Sides are ALWAYS closed regardless of mapping
+    if (maskChar === 'S' || c === 0 || c === gridCols - 1) return 'STONE3';
     // Empty space
     if (maskChar === '.') return 'NONE';
     
     // 2. FLAG COLORS (Top 15 Rows)
     if (r < 15) {
-      // PROPORTIONAL CIRCLE: 
-      // cx = 9/20 of 20 = 9 (slightly left of middle index 9.5)
-      // cy = middle of 15 rows = 7.5
-      const cx = 8.5; 
+      // PROPORTIONAL CIRCLE
+      // Center X is 45% across the screen (9/20)
+      const cx = gridCols * 0.45; 
       const cy = 7.5;
       
-      // Aspect ratio correction (brickHeight = 0.8 * brickWidth)
+      // Aspect ratio correction
       const dy = (r - cy) * 0.8;
       const dx = (c - cx);
       const dist = Math.sqrt(dy * dy + dx * dx);
       
-      if (dist < 4.2) return 'circle'; // Red circle
+      // Circle radius scales with screen width
+      const radius = gridCols * 0.21; 
+      
+      if (dist < radius) return 'circle';
     }
 
     // Everything else is Green

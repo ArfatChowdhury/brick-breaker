@@ -1,17 +1,21 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 
 interface MissileProps {
   position: [number, number];
   angle: number; // in radians
   size: number;
+  scale?: number;
 }
 
-const Missile: React.FC<MissileProps> = ({ position, angle, size = 40 }) => {
-  const rotation = (angle * 180) / Math.PI + 90;
+const Missile: React.FC<MissileProps> = ({ position, angle, size = 44, scale = 1.0 }) => {
+  // 🚀 emoji is naturally angled. We adjust the base rotation to align it.
+  const rotation = (angle * 180) / Math.PI + 45; 
 
-  // Dynamic Flame Flicker
-  const flicker = (Math.sin(Date.now() / 50) + 1.2) * 10;
+  // High-frequency engine shimmer
+  const time = Date.now();
+  const flicker = (Math.sin(time / 25) + 1.2) * 12;
+  const corePulse = (Math.cos(time / 40) + 1.5) * 4;
 
   return (
     <View
@@ -21,61 +25,44 @@ const Missile: React.FC<MissileProps> = ({ position, angle, size = 40 }) => {
         top: position[1] - size / 2,
         width: size,
         height: size,
-        transform: [{ rotate: `${rotation}deg` }],
+        transform: [{ rotate: `${rotation}deg` }, { scale }],
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
-      {/* Flame Trail Effect */}
-      <View style={[styles.flame, { height: 15 + flicker, opacity: 0.6 + (flicker / 40) }]} />
-      
-      <View style={styles.missileBody}>
-          <View style={styles.nose} />
-          <View style={styles.fins} />
-      </View>
+      {/* Engine Afterburn Glow */}
+      <View style={[styles.thrusterGlow, { bottom: -5 - corePulse, opacity: 0.6 }]} />
+      <View style={[styles.flameCore, { height: 15 + flicker, opacity: 0.8 }]} />
+
+      {/* The Rocket Emoji itself */}
+      <Text style={{ fontSize: size }}>🚀</Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  missileBody: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#90A4AE',
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: '#000',
-  },
-  nose: {
+  thrusterGlow: {
     position: 'absolute',
-    top: -10,
-    left: '25%',
-    width: '50%',
-    height: 15,
-    backgroundColor: '#F44336',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    borderWidth: 2,
-    borderColor: '#000',
+    bottom: -8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FF3D00',
+    shadowColor: '#FF3D00',
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
+    zIndex: -1,
   },
-  fins: {
+  flameCore: {
     position: 'absolute',
-    bottom: 5,
-    left: -5,
-    width: '120%',
-    height: 10,
-    backgroundColor: '#FFC107',
-    borderWidth: 2,
-    borderColor: '#000',
+    bottom: -15,
+    width: 8,
+    backgroundColor: '#FFFDE7', 
+    borderRadius: 4,
+    shadowColor: '#FFD600',
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
-  flame: {
-      position: 'absolute',
-      bottom: -15,
-      left: '35%',
-      width: '30%',
-      height: 20,
-      backgroundColor: '#FF5722',
-      borderRadius: 10,
-      opacity: 0.8,
-  }
 });
 
 export default Missile;

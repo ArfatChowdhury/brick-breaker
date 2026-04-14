@@ -6,10 +6,10 @@ export const SouthAfricaMaze: LevelConfig = {
   backgroundColor: '#007A3D',
   initialBallSpeed: 10,
   paddleSizeMultiplier: 0.7,
-  gridCols: 20,
+  // gridCols is strictly dynamic now
   gridRows: 24,
   pattern: (r, c, gridRows, gridCols) => {
-    // 2. MAZE MASK (24 Rows x 20 Cols)
+    // 2. MAZE MASK (24 Rows x 20 Cols mapped)
     const MAZE_MASK = [
       "SSSSSSSSSSSSSSSSSSSS", // 0
       "SCCCCCCCCCCCCCCCCCCS", // 1
@@ -37,9 +37,12 @@ export const SouthAfricaMaze: LevelConfig = {
       "SSSSSSSSSSSSSSSSSSSS", // 23: SEALED BOTTOM
     ];
 
-    const maskChar = MAZE_MASK[r]?.[c];
+    const MASK_WIDTH = 20;
+    const mappedC = Math.floor((c / gridCols) * MASK_WIDTH);
+    const maskChar = MAZE_MASK[r]?.[mappedC] || 'S';
+    
     if (maskChar === '.') return 'NONE';
-    if (maskChar === 'S') return 'STONE3';
+    if (maskChar === 'S' || c === 0 || c === gridCols - 1) return 'STONE3';
 
     // 1. DYNAMIC COLOR CALCULATION for Diagonal Y
     // Middle horizontal line is at row 11-12
@@ -47,28 +50,30 @@ export const SouthAfricaMaze: LevelConfig = {
     const distFromMiddle = Math.abs(r - middleY);
     
     // Triangle (Black with Gold border)
-    // Triangle is on the left, growing to about col 7 at the middle
-    const triangleWidth = Math.max(0, 7.5 - distFromMiddle * 0.65);
+    // Scale the triangle width dynamically based on layout
+    const baseTriangleWidth = gridCols * 0.375; // ~7.5/20
+    const triangleSlope = distFromMiddle * 0.65 * (gridCols / 20);
+    const triangleWidth = Math.max(0, baseTriangleWidth - triangleSlope);
+
     if (c < triangleWidth - 1) return 'BLACK';
     if (c < triangleWidth) return 'GOLD';
 
     // Green Y arms (Diagonal)
-    // The arms start from top-left and bottom-left and converge to the middle horizontal bar
-    // At c=8, they should be near the middle (distFromMiddle ~ 1)
-    // At c=0, they should be at the top/bottom (distFromMiddle ~ 11)
-    // Formula: distFromMiddle < (8 - c) * 1.5 ?
-    const armWidthAtC = (7.5 - c) * 1.5;
-    const isInsideArm = distFromMiddle < armWidthAtC + 2;
-    const isInsideGreen = distFromMiddle < armWidthAtC + 1;
+    const armSlope = (baseTriangleWidth - c) * 1.5;
+    const armWidth = 2 * (gridCols / 20); // Scale the thickness slightly
+    const greenWidth = 1 * (gridCols / 20);
+
+    const isInsideArm = distFromMiddle < armSlope + armWidth;
+    const isInsideGreen = distFromMiddle < armSlope + greenWidth;
 
     // Horizontal part of the Y (starting after triangle)
-    if (c >= 7 && distFromMiddle < 2.5) {
-        if (distFromMiddle < 1.5) return 'GREEN';
+    if (c >= baseTriangleWidth - 0.5 && distFromMiddle < armWidth + 0.5) {
+        if (distFromMiddle < greenWidth + 0.5) return 'GREEN';
         return 'WHITE';
     }
 
     // Diagonal arms
-    if (c < 8 && isInsideArm) {
+    if (c < baseTriangleWidth && isInsideArm) {
         if (isInsideGreen) return 'GREEN';
         return 'WHITE';
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, ViewStyle, Animated, Text } from 'react-native';
+import { StyleSheet, View, Text, ViewStyle, Animated } from 'react-native';
 
 interface PaddleProps {
   size: [number, number];
@@ -8,9 +8,18 @@ interface PaddleProps {
   isFire?: boolean;
   flash?: number;
   weaponMode?: 'NORMAL' | 'AIM' | 'MINE';
+  recoil?: number;
 }
 
-const Paddle: React.FC<PaddleProps> = ({ size, position, color = '#4DB6AC', isFire, flash = 0, weaponMode = 'NORMAL' }) => {
+const Paddle: React.FC<PaddleProps> = ({ 
+  size, 
+  position, 
+  color = '#4DB6AC', 
+  isFire, 
+  flash = 0, 
+  weaponMode = 'NORMAL',
+  recoil = 0
+}) => {
   const width = size[0];
   const height = size[1];
   const x = position[0] - width / 2;
@@ -18,38 +27,72 @@ const Paddle: React.FC<PaddleProps> = ({ size, position, color = '#4DB6AC', isFi
 
   // Animation for rising pods
   const riseAnim = useRef(new Animated.Value(0)).current;
+  const isWeaponActive = weaponMode === 'AIM' || weaponMode === 'MINE';
 
   useEffect(() => {
-    Animated.timing(riseAnim, {
-      toValue: weaponMode !== 'NORMAL' ? 1 : 0,
-      duration: 350,
+    Animated.spring(riseAnim, {
+      toValue: isWeaponActive ? 1 : 0,
+      speed: 14,
+      bounciness: 8,
       useNativeDriver: true,
     }).start();
-  }, [weaponMode]);
+  }, [isWeaponActive]);
 
+  // Pods rise from hidden (below paddle top edge) to above the paddle
+  const podHeight = 38; 
   const translateY = riseAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [30, -5], // Rise from inside to above
+    outputRange: [podHeight, 0],
+  });
+  const podOpacity = riseAnim.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0.3, 1],
   });
 
   const baseStyle: ViewStyle = {
     position: 'absolute' as const,
     left: x,
-    top: y,
+    top: y + recoil, 
     width: width,
     height: height,
     backgroundColor: isFire ? '#FF5252' : color,
     borderRadius: height / 2,
     borderWidth: 3,
     borderColor: '#000000',
-    // Comic shadow
     shadowColor: isFire ? '#FF5252' : '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: isFire ? 15 : 0,
     elevation: 6,
     zIndex: 10,
+    overflow: 'visible', 
   };
+
+  // Advanced Weapon Pods (Rocket or Bomb)
+  const renderPod = (side: 'left' | 'right') => (
+    <Animated.View 
+      key={side}
+      style={[
+        styles.launcherPod, 
+        { 
+          [side]: 10, 
+          bottom: '100%',
+          opacity: podOpacity,
+          transform: [{ translateY }], 
+        }
+      ]}
+    >
+      {weaponMode === 'AIM' ? (
+        <View style={styles.emojiPod}>
+          <Text style={styles.miniRocket}>🚀</Text>
+        </View>
+      ) : (
+        <View style={styles.emojiPod}>
+          <Text style={styles.miniMine}>💣</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
 
   return (
     <View style={baseStyle}>
@@ -73,22 +116,9 @@ const Paddle: React.FC<PaddleProps> = ({ size, position, color = '#4DB6AC', isFi
         />
       )}
 
-      {/* Mechanical Rising Pods */}
-      <Animated.View style={[styles.launcherPod, { left: -30, transform: [{ translateY }] }]}>
-        <View style={styles.tube}>
-          <View style={styles.neonRing} />
-          <Text style={styles.weaponIcon}>{weaponMode === 'MINE' ? '💣' : '🚀'}</Text>
-        </View>
-        <View style={styles.baseJoint} />
-      </Animated.View>
-
-      <Animated.View style={[styles.launcherPod, { right: -30, transform: [{ translateY }] }]}>
-        <View style={styles.tube}>
-          <View style={styles.neonRing} />
-          <Text style={styles.weaponIcon}>{weaponMode === 'MINE' ? '💣' : '🚀'}</Text>
-        </View>
-        <View style={styles.baseJoint} />
-      </Animated.View>
+      {/* Rocket Pods — rise above paddle when AIM mode is ON */}
+      {renderPod('left')}
+      {renderPod('right')}
     </View>
   );
 };
@@ -121,45 +151,27 @@ const styles = StyleSheet.create({
   },
   launcherPod: {
     position: 'absolute',
-    width: 35,
-    height: 45,
-    alignItems: 'center',
-    zIndex: -1, // Behind the main paddle body
-  },
-  tube: {
-    width: 30,
+    width: 24,
     height: 40,
-    backgroundColor: '#37474F',
-    borderWidth: 2,
-    borderColor: '#000',
-    borderRadius: 5,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    zIndex: 20, 
+    flexDirection: 'column',
+  },
+  emojiPod: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
   },
-  neonRing: {
-    position: 'absolute',
-    top: 5,
-    width: '100%',
-    height: 4,
-    backgroundColor: '#00E5FF', // Cyan Neon
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.8,
-    shadowRadius: 5,
+  miniRocket: {
+    fontSize: 22,
+    transform: [{ rotate: '-45deg' }],
   },
-  baseJoint: {
-    width: 15,
-    height: 10,
-    backgroundColor: '#263238',
-    borderWidth: 1,
-    borderColor: '#000',
-  },
-  weaponIcon: {
+  miniMine: {
     fontSize: 18,
-    marginTop: 5,
   },
-});
 
-export default Paddle;
+});
 
 export default Paddle;

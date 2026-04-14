@@ -55,9 +55,13 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     } else if (key.startsWith('mine_')) {
       const mine = entities[key];
       const targetBrick = entities[mine.attachedTo];
+      const currentTime = Date.now();
       
       // 1. Move mine from paddle to target brick (Launch Animation)
       if (targetBrick) {
+        if (!mine.scale) mine.scale = 0.5;
+        if (mine.scale < 1.0) mine.scale += 0.05;
+
         const dx = targetBrick.position[0] - mine.position[0];
         const dy = targetBrick.position[1] - mine.position[1];
         const dist = Math.sqrt(dx*dx + dy*dy);
@@ -65,14 +69,15 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           mine.position[0] += dx * 0.2;
           mine.position[1] += dy * 0.2;
         } else {
-          mine.position = [...targetBrick.position];
+          // Finish launch animation and stick to brick with side-based offset
+          const offset = mine.side === 'left' ? -8 : 8;
+          mine.position = [targetBrick.position[0] + offset, targetBrick.position[1]];
         }
       }
 
-      if (mine.blastTimer !== undefined) {
-        mine.blastTimer -= 1;
-        if (mine.blastTimer <= 0) {
-          explodeMine(entities, mine.position, mine.attachedTo, dispatch);
+      if (mine.expiresAt) {
+        if (currentTime >= mine.expiresAt) {
+          explodeMine(entities, key, mine.position, mine.attachedTo, dispatch);
           if (targetBrick) {
             targetBrick.status = false;
             scoreBoard._bricksDirty = true;
@@ -126,8 +131,11 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         m.position[0] += (baseDirX * speed) + (perpX * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
         m.position[1] += (baseDirY * speed) + (perpY * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
         
-        // Point towards target, but slightly offset by spiral for natural look
         m.angle = Math.atan2(dy, dx);
+        
+        // Launch expansion (Scale up)
+        if (!m.scale) m.scale = 0.5;
+        if (m.scale < 1.0) m.scale += 0.05;
       }
     }
   }
@@ -167,6 +175,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     if (scoreBoard.shake > 2) dispatch({ type: 'shake', intensity: scoreBoard.shake });
   }
   if (paddle.flash > 0) paddle.flash -= 1;
+  if (paddle.recoil > 0) paddle.recoil *= 0.8;
+  if (paddle.recoil < 0.1) paddle.recoil = 0;
   
   // 0c. Environmental Trap Mine System
   const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
@@ -200,6 +210,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   const isFireActive = !!scoreBoard.powerUpState.FIRE;
   paddle.isFire = isFireActive;
   paddle.color = isFireActive ? '#FF5252' : '#4DB6AC';
+  paddle.weaponMode = scoreBoard.weaponMode; // Sync so Paddle renderer shows/hides rocket pods
 
   // --- SUB-STEPPING PHYSICS LOOP ---
   // We run the physics twice per frame at half velocity to eliminate tunneling (passing through bricks)
@@ -416,7 +427,10 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
   if (clearableBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
     dispatch({ type: 'win', score: scoreBoard.score });
-    activeBallKeys.forEach(k => entities[k].velocity = [0, 0]);
+    // Safety check: Filter out any ball keys that might have been deleted this frame
+    activeBallKeys.forEach(k => {
+      if (entities[k]) entities[k].velocity = [0, 0];
+    });
   }
 
   powerUpKeys.forEach(key => {
@@ -544,7 +558,7 @@ const spawnBlastWave = (entities: any, position: [number, number]) => {
   setTimeout(() => { delete entities[blastId]; }, 500);
 };
 
-const explodeMine = (entities: any, position: [number, number], brickId: string, dispatch: any) => {
+const explodeMine = (entities: any, mineKey: string, position: [number, number], brickId: string, dispatch: any) => {
   spawnBlastWave(entities, position);
   entities.scoreBoard.shake += 15;
   
@@ -552,7 +566,7 @@ const explodeMine = (entities: any, position: [number, number], brickId: string,
   dispatch({ type: 'brick-break' });
   
   // Remove mine visual entity
-  delete entities[`mine_${brickId}`];
+  delete entities[mineKey];
 
   // Destroy bricks in a larger radius for the mine (80-100 pixels)
   const brickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));

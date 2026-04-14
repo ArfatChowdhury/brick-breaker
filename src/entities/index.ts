@@ -22,11 +22,17 @@ export const BRICK_WIDTH = (SCREEN_WIDTH - 40) / BRICK_COLS;
 
 export const getEntities = (levelIndex = 0) => {
   const level = FLAG_LEVELS[levelIndex] || FLAG_LEVELS[0];
-  // Per-level resolution override (falls back to global defaults)
+  
+  // 1. Dynamic Grid Layout
+  // Force bricks to take up the full width minus a tiny margin (4px)
+  const MIN_BRICK_WIDTH = 18; // px
+  const dynamicCols = Math.floor((SCREEN_WIDTH - 4) / MIN_BRICK_WIDTH);
+  
   const brickRows = level.gridRows ?? BRICK_ROWS;
-  const brickCols = level.gridCols ?? BRICK_COLS;
-  const brickWidth = (SCREEN_WIDTH - 40) / brickCols;
-  const brickHeight = level.gridCols ? brickWidth * 0.8 : BRICK_HEIGHT;
+  const brickCols = dynamicCols; // Ignore level.gridCols, force full flush width
+  
+  const brickWidth = (SCREEN_WIDTH - 4) / brickCols;
+  const brickHeight = brickWidth * 0.8; // Maintain 5:4 aspect ratio
 
   const paddleMultiplier = level.paddleSizeMultiplier ?? 1.0;
   const speedScale = level.initialBallSpeed ? level.initialBallSpeed / 8.6 : 1.0;
@@ -82,10 +88,10 @@ export const getEntities = (levelIndex = 0) => {
 
       entities[brickId] = {
         position: [
-          20 + c * brickWidth + brickWidth / 2,
+          2 + c * brickWidth + brickWidth / 2, // Only 2px left margin
           80 + r * brickHeight + brickHeight / 2,
         ],
-        size: [brickWidth - 1, brickHeight - 1],
+        size: [brickWidth - 0.5, brickHeight - 0.5], // Tighter gaps
         color: (isBorder && patternResult === 'background') ? '#78909C' : brickColor,
         status: true,
         permanent: isBorder || patternResult === 'STONE3',
@@ -108,10 +114,10 @@ export const getEntities = (levelIndex = 0) => {
           const brickId = `maze_brick_${r}_${c}`;
           entities[brickId] = {
             position: [
-              20 + c * brickWidth + brickWidth / 2,
+              2 + c * brickWidth + brickWidth / 2,
               80 + (brickRows + r) * brickHeight + brickHeight / 2,
             ],
-            size: [brickWidth - 1, brickHeight - 1],
+            size: [brickWidth - 0.5, brickHeight - 0.5],
             color: '#78909C', // Stone wall color
             status: true,
             permanent: true,

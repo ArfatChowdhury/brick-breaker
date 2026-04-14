@@ -47,16 +47,25 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ score, lives, missiles, mines, 
           </View>
         </View>
 
-        {/* Right Side: Weapons */}
-        <View style={styles.weaponBar}>
-          <View style={[styles.weaponBtn, weaponMode === 'AIM' && styles.weaponActive]}>
-            <Text style={styles.weaponIcon}>🚀</Text>
-            <Text style={styles.weaponCount}>{missiles}</Text>
-          </View>
-          <View style={[styles.weaponBtn, weaponMode === 'MINE' && styles.weaponActive]}>
-            <Text style={styles.weaponIcon}>💣</Text>
-            <Text style={styles.weaponCount}>{mines}</Text>
-          </View>
+      </View>
+
+      {/* Vertical Weapon Bar - Right Side */}
+      <View style={styles.weaponBarVertical}>
+        <View style={[
+          styles.weaponBtn, 
+          weaponMode === 'AIM' && styles.weaponActive,
+          missiles === 0 && styles.weaponEmpty
+        ]}>
+          <Text style={styles.weaponIcon}>🚀</Text>
+          <Text style={[styles.weaponCount, missiles === 0 && styles.weaponCountEmpty]}>{missiles}</Text>
+        </View>
+        <View style={[
+          styles.weaponBtn, 
+          weaponMode === 'MINE' && styles.weaponActive,
+          mines === 0 && styles.weaponEmpty
+        ]}>
+          <Text style={styles.weaponIcon}>💣</Text>
+          <Text style={[styles.weaponCount, mines === 0 && styles.weaponCountEmpty]}>{mines}</Text>
         </View>
       </View>
 
@@ -137,32 +146,50 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
   },
-  weaponBar: {
-    flexDirection: 'row',
-    gap: 10,
+  weaponBarVertical: {
+    position: 'absolute',
+    top: 200,
+    right: 15,
+    gap: 12,
+    zIndex: 150,
   },
   weaponBtn: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    backgroundColor: '#333',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#555',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(40, 40, 50, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#444',
+    minWidth: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
   },
   weaponActive: {
     backgroundColor: '#4ECDC4',
     borderColor: '#FFF',
+    transform: [{ scale: 1.05 }],
   },
   weaponIcon: {
-    fontSize: 16,
-    marginRight: 4,
+    fontSize: 22,
+    marginBottom: 2,
   },
   weaponCount: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '900',
     color: '#FFF',
+  },
+  weaponEmpty: {
+    opacity: 0.4,
+    borderColor: '#333',
+  },
+  weaponCountEmpty: {
+    color: '#888',
   },
   timerContainer: {
     marginTop: 8,
