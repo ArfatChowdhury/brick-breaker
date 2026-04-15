@@ -8,34 +8,34 @@ export const Brazil: LevelConfig = {
   paddleSizeMultiplier: 0.8,
   gridRows: 26,
   pattern: (r, c, gridRows, gridCols) => {
-    // 1. BRAZIL FORTRESS MASK (26 Rows)
+    // 1. BRAZIL FORTRESS MASK (Rainforest Canopy)
     const BR_MASK = [
-      "SSSSSSSS....SSSSSSSS", // 0: TOP ENTRY
-      "S..................S", // 1
-      "S.SSSSSSSSSSSSSSSS.S", // 2: OUTER RING
-      "S.S..............S.S", // 3
-      "S.S..GGGGGGGGGGGG.S.S", // 4: START OF FLAG
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..GGGGGGGGGGGG.S.S",
-      "S.S..............S.S", // 20
-      "S.SSSSSSSSSSSSSSSS.S", // 21: LOWER RING
-      "S..................S", // 22
-      "S........SS........S", // 23: BOTTOM GUARD
-      "S..................S", // 24
-      "SSSSSSSSSSSSSSSSSSSS", // 25: SEALED BOTTOM
+      "SSSSSSSS....SSSSSSSS", // 0: TOP CANOPY
+      "SSSSSS........SSSSSS", // 1: DESCENDING ROOF
+      "SSSS............SSSS", // 2: LEAVES
+      "SS................SS", // 3: OPENING
+      "S.SFFFFFFFFFFFFFFS.S", // 4: START OF FLAG
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S",
+      "S.SFFFFFFFFFFFFFFS.S", // 19
+      "SS................SS", // 20: TAPER IN
+      "SSSS............SSSS", // 21: JUNGLE FLOOR 
+      "SSSSSS...SS...SSSSSS", // 22: GUARD
+      "SSSSSSSSSSSSSSSSSSSS", // 23: SEALED
+      "SSSSSSSSSSSSSSSSSSSS", // 24: SEALED
+      "SSSSSSSSSSSSSSSSSSSS", // 25: SEALED
     ];
 
     const MASK_WIDTH = 20;
@@ -46,24 +46,33 @@ export const Brazil: LevelConfig = {
     if (maskChar === 'S' || c === 0 || c === gridCols - 1) return 'STONE3';
     if (maskChar === '.') return 'NONE'; 
 
+
     // 3. FLAG GEOMETRY (Rows 4-20)
     if (r >= 4 && r <= 20) {
       const cx = gridCols / 2;
-      const cy = 12.0;
+      const cy = 12.0; // Center of the flag
       
       const dx = Math.abs(c - cx);
       const dy = Math.abs(r - cy);
 
       // BLUE CIRCLE (Vibrant Blue)
+      // Base radius tied to gridCols
+      const circleRadius = gridCols * 0.16;
+      // Adjust dy to make a perfect circle visually (since bricks are rectangular)
       const dist = Math.sqrt(Math.pow(dy * 1.25, 2) + Math.pow(dx, 2));
-      const radius = gridCols * 0.17;
-      const isCircle = dist < radius;
-      // White slogan hint
-      const isSlogan = dist < radius && Math.abs(dy - (dx * 0.2)) < 0.6 && r >= 11 && r <= 13;
+      const isCircle = dist < circleRadius;
 
-      // YELLOW DIAMOND (Large & Bold)
-      const diamondVal = (dy / 8.5) + (dx / (gridCols * 0.44));
-      const isDiamond = diamondVal < 1.0;
+      // WHITE SLOGAN ARC (Upward curving smile)
+      // Center of the arc's curvature is below the circle
+      const arcCenterY = cy + 5;
+      const distToArc = Math.sqrt(Math.pow(dx, 2) + Math.pow(Math.abs(r - arcCenterY) * 1.2, 2));
+      const isSlogan = isCircle && distToArc > 4.5 && distToArc < 5.8;
+
+      // YELLOW DIAMOND (Large & Bold, 1 tile of green padding)
+      const maxDx = (gridCols / 2) - 2.5; 
+      const maxDy = 7.5; // Leaves rows 4 and 20 as mostly green
+      const diamondVal = (dy / maxDy) + (dx / maxDx);
+      const isDiamond = diamondVal <= 1.0;
 
       if (isSlogan) return 'WHITE';
       if (isCircle) return '#002271';

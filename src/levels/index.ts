@@ -23,6 +23,10 @@ import { Australia } from './Australia';
 import { Mexico } from './Mexico';
 import { China } from './China';
 import { Portugal } from './Portugal';
+import { Russia } from './Russia';
+import { Greece } from './Greece';
+import { Egypt } from './Egypt';
+import { Sweden } from './Sweden';
 import { LevelConfig } from './types';
 
 export const FLAG_LEVELS: LevelConfig[] = [
@@ -44,6 +48,10 @@ export const FLAG_LEVELS: LevelConfig[] = [
   Mexico,
   China,
   Portugal,
+  Russia,
+  Greece,
+  Egypt,
+  Sweden,
   Fortress,
   UK,
   Brazil,
@@ -52,5 +60,6 @@ export const FLAG_LEVELS: LevelConfig[] = [
   DiamondCore,
   SouthAfricaMaze,
 ];
+
 
 export * from './types';

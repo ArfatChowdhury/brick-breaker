@@ -59,16 +59,26 @@ export default function App() {
     try {
       const savedLevels = await AsyncStorage.getItem('@unlocked_levels');
       const savedScores = await AsyncStorage.getItem('@high_scores');
+      
+      let parsedLevels: number[] = [];
       if (savedLevels) {
-        const parsedLevels: number[] = JSON.parse(savedLevels);
-        // Force unlock South Africa map
-        const saIndex = FLAG_LEVELS.findIndex(l => l.id === 'SA_MAZE');
-        if (saIndex !== -1 && !parsedLevels.includes(saIndex)) {
-          parsedLevels.push(saIndex);
-          saveProgress(parsedLevels, JSON.parse(savedScores || '{}'));
-        }
-        setUnlockedLevels(parsedLevels);
+        parsedLevels = JSON.parse(savedLevels);
       }
+
+      // Force unlock all newly added levels globally
+      let newlyUnlocked = false;
+      FLAG_LEVELS.forEach((_, index) => {
+        if (!parsedLevels.includes(index)) {
+          parsedLevels.push(index);
+          newlyUnlocked = true;
+        }
+      });
+      
+      if (newlyUnlocked || !savedLevels) {
+        saveProgress(parsedLevels, JSON.parse(savedScores || '{}'));
+      }
+      
+      setUnlockedLevels(parsedLevels);
       if (savedScores) setHighScores(JSON.parse(savedScores));
     } catch (e) { console.log('Error loading progress', e); }
   };

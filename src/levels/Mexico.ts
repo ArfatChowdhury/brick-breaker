@@ -14,22 +14,22 @@ export const Mexico: LevelConfig = {
       "S..................S", // 1
       "SS.SSSSSSSSSSSSSS.SS", // 2: STEP 1 (Outer)
       "SSS.S..........S.SSS", // 3: STEP 2 (Inner)
-      "SSS.S.GGGGGWWWRR.S.SSS", // 4: START OF FLAG
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS", // 9: CREST ZONE
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS", // 14: CREST ZONE END
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S.GGGGGWWWRR.S.SSS",
-      "SSS.S..........S.SSS", // 19
+      "SS.SFFFFFFFFFFFFS.SS", // 4: START OF FLAG
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS", // 9: CREST ZONE
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS", // 14: CREST ZONE END
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.SFFFFFFFFFFFFS.SS",
+      "SS.S............S.SS", // 19
       "SS.SSSSSSSSSSSSSS.SS", // 20: OUTER STEP
       "S..................S", // 21
       "S...SSSS....SSSS...S", // 22: TEMPLE ENTRANCE
