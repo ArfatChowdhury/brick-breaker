@@ -57,7 +57,9 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ score, lives, missiles, mines, 
           missiles === 0 && styles.weaponEmpty
         ]}>
           <Text style={styles.weaponIcon}>🚀</Text>
-          <Text style={[styles.weaponCount, missiles === 0 && styles.weaponCountEmpty]}>{missiles}</Text>
+          <View style={styles.badgeContainer}>
+            <Text style={[styles.weaponCount, missiles === 0 && styles.weaponCountEmpty]}>{missiles}</Text>
+          </View>
         </View>
         <View style={[
           styles.weaponBtn, 
@@ -65,7 +67,9 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({ score, lives, missiles, mines, 
           mines === 0 && styles.weaponEmpty
         ]}>
           <Text style={styles.weaponIcon}>💣</Text>
-          <Text style={[styles.weaponCount, mines === 0 && styles.weaponCountEmpty]}>{mines}</Text>
+          <View style={styles.badgeContainer}>
+            <Text style={[styles.weaponCount, mines === 0 && styles.weaponCountEmpty]}>{mines}</Text>
+          </View>
         </View>
       </View>
 
@@ -154,16 +158,15 @@ const styles = StyleSheet.create({
     zIndex: 150,
   },
   weaponBtn: {
-    flexDirection: 'column',
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(40, 40, 50, 0.95)',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    backgroundColor: 'rgba(30, 30, 40, 0.95)',
     borderRadius: 15,
     borderWidth: 2,
     borderColor: '#444',
-    minWidth: 50,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -173,23 +176,34 @@ const styles = StyleSheet.create({
   weaponActive: {
     backgroundColor: '#4ECDC4',
     borderColor: '#FFF',
-    transform: [{ scale: 1.05 }],
+    transform: [{ scale: 1.1 }],
   },
   weaponIcon: {
-    fontSize: 22,
-    marginBottom: 2,
+    fontSize: 26,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#FFEB3B',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#000',
   },
   weaponCount: {
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: '900',
-    color: '#FFF',
+    color: '#000',
   },
   weaponEmpty: {
-    opacity: 0.4,
-    borderColor: '#333',
+    opacity: 0.3,
   },
   weaponCountEmpty: {
-    color: '#888',
+    color: '#333',
   },
   timerContainer: {
     marginTop: 8,

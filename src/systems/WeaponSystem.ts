@@ -11,14 +11,14 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
   touches.forEach((t: any) => {
     const { pageX, pageY } = t.event;
 
-    // Define UI Region for the vertical buttons
+    // Define UI Region for the vertical buttons (Lowered now to match ScoreBoard.tsx)
     const isRightEdge = pageX > SCREEN_WIDTH - 150;
-    const isUiArea = isRightEdge && pageY > 120 && pageY < 450;
+    const isUiArea = isRightEdge && pageY > 200 && pageY < 500;
 
     // 1. Detect Taps on ScoreBoard Weapon Icons (Vertical Bar on Right)
     // IMPORTANT: Only use "start" event for UI buttons to prevent double-firing (select/deselect)
     if (t.type === 'start' && isUiArea) {
-      if (pageY > 120 && pageY < 250) {
+      if (pageY > 200 && pageY < 320) {
         // Toggle Missile Mode (only if we have missiles, or we want to turn it off)
         if (scoreBoard.missiles > 0 || scoreBoard.weaponMode === 'AIM') {
           const newMode = scoreBoard.weaponMode === 'AIM' ? 'NORMAL' : 'AIM';
@@ -26,7 +26,7 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
           dispatch({ type: 'weapon-mode-change', mode: newMode });
         }
         return;
-      } else if (pageY > 250 && pageY < 400) {
+      } else if (pageY > 320 && pageY < 450) {
         // Toggle Mine Mode (only if we have mines, or we want to turn it off)
         if (scoreBoard.mines > 0 || scoreBoard.weaponMode === 'MINE') {
           const newMode = scoreBoard.weaponMode === 'MINE' ? 'NORMAL' : 'MINE';

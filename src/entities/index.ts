@@ -85,6 +85,7 @@ export const getEntities = (levelIndex = 0) => {
       else if (patternResult === 'GREEN') brickColor = '#007A3D';
       else if (patternResult === 'BLUE') brickColor = '#002664';
       else if (patternResult === 'GOLD') brickColor = '#FFB612';
+      else if (typeof patternResult === 'string' && patternResult.startsWith('#')) brickColor = patternResult;
 
       entities[brickId] = {
         position: [

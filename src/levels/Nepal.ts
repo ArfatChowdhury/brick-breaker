@@ -1,21 +1,44 @@
 import { LevelConfig } from './types';
 
 export const Nepal: LevelConfig = {
-  name: 'Nepal',
-  id: 'NP',
+  name: 'Nepal Tri-Peak Elite',
+  id: 'NP_ELITE_V1',
   backgroundColor: '#DC143C',
-  pattern: (r, c, rows, cols) => {
-    // Funnel Gauntlet: Narrow gap at the top widening downwards
-    if (r === 1 && (c < 6 || c > 7)) return 'STONE';
-    if (r === 2 && (c < 5 || c > 8)) return 'STONE';
+  initialBallSpeed: 9.5,
+  paddleSizeMultiplier: 0.8,
+  gridRows: 26,
+  pattern: (r, c, gridRows, gridCols) => {
+    // 1. NEPAL SHAPE LOGIC
+    // Two stacked triangles: Top (4-14), Bottom (14-26)
+    const getFlagWidth = (row: number) => {
+      if (row < 4) return 0;
+      if (row <= 14) {
+        // Linear growth for top peak
+        return ( (row - 4) / 10 ) * (gridCols * 0.65);
+      }
+      if (row <= 26) {
+        // Reset and growth for bottom peak
+        return ( (row - 14) / 12 ) * (gridCols * 0.85);
+      }
+      return 0;
+    };
 
-    const maxCtop = (r / 8) * cols;
-    const maxCbot = ((r - 8) / 8) * cols;
-    const isInTop = r < 8 && c < maxCtop;
-    const isInBot = r >= 8 && c < maxCbot;
-    if (!isInTop && !isInBot) return 'NONE'; 
-    const isSun = r === 12 && c === 3;
-    const isMoon = r === 4 && c === 3;
-    return (isSun || isMoon) ? 'WHITE' : 'background';
+    const flagWidth = getFlagWidth(r);
+    const isInsideFlag = c <= flagWidth;
+    const isAtEdge = Math.abs(c - flagWidth) < 1.1;
+
+    // 2. STONE PERIMETER (Triangular wall)
+    if (isInsideFlag && (isAtEdge || c === 0 || r === 4 || r === 25)) {
+      return 'STONE3';
+    }
+
+    // 3. VOID LOGIC (Non-rectangular behavior)
+    if (!isInsideFlag) return 'NONE';
+
+    // 4. FLAG SYMBOLS
+    if (r === 9 && c === Math.floor(flagWidth * 0.3)) return 'WHITE'; // Moon
+    if (r === 20 && c === Math.floor(flagWidth * 0.3)) return 'WHITE'; // Sun
+
+    return 'background';
   },
 };
