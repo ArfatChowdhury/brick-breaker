@@ -27,6 +27,14 @@ import { Russia } from './Russia';
 import { Greece } from './Greece';
 import { Egypt } from './Egypt';
 import { Sweden } from './Sweden';
+import { Switzerland } from './Switzerland';
+import { Jamaica } from './Jamaica';
+import { Pakistan } from './Pakistan';
+import { Colombia } from './Colombia';
+import { Thailand } from './Thailand';
+import { Ireland } from './Ireland';
+import { Cuba } from './Cuba';
+import { Kenya } from './Kenya';
 import { LevelConfig } from './types';
 
 export const FLAG_LEVELS: LevelConfig[] = [
@@ -52,6 +60,14 @@ export const FLAG_LEVELS: LevelConfig[] = [
   Greece,
   Egypt,
   Sweden,
+  Switzerland,
+  Jamaica,
+  Pakistan,
+  Colombia,
+  Thailand,
+  Ireland,
+  Cuba,
+  Kenya,
   Fortress,
   UK,
   Brazil,
