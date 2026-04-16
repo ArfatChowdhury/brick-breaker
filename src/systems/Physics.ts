@@ -3,6 +3,7 @@ import Ball from '../components/Ball';
 import PowerUpComponent from '../components/PowerUp';
 import Particle from '../components/Particle';
 import { triggerHaptic } from '../utils/haptics';
+import { playSound } from '../utils/audio';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -78,6 +79,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       if (mine.expiresAt) {
         if (currentTime >= mine.expiresAt) {
           explodeMine(entities, key, mine.position, mine.attachedTo, dispatch);
+          playSound('explosion_blast');
           if (targetBrick) {
             targetBrick.status = false;
             scoreBoard._bricksDirty = true;
@@ -112,6 +114,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         });
         triggerHaptic('impactHeavy');
         dispatch({ type: 'brick-break' });
+        playSound('explosion');
         scoreBoard.shake += 10;
       } else {
         const speed = 10;
@@ -242,11 +245,13 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         ball.velocity[0] = Math.abs(ball.velocity[0]);
         triggerHaptic('impactLight');
         dispatch({ type: 'wall-hit' });
+        playSound('pickup_coin');
       } else if (ball.position[0] + ball.radius >= SCREEN_WIDTH) {
         ball.position[0] = SCREEN_WIDTH - ball.radius;
         ball.velocity[0] = -Math.abs(ball.velocity[0]);
         triggerHaptic('impactLight');
         dispatch({ type: 'wall-hit' });
+        playSound('pickup_coin');
       }
 
       if (ball.position[1] - ball.radius <= 0) {
@@ -254,6 +259,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         ball.velocity[1] = Math.abs(ball.velocity[1]);
         triggerHaptic('impactLight');
         dispatch({ type: 'wall-hit' });
+        playSound('pickup_coin');
       }
 
       // 3. Bottom check (early exit sub-step if ball lost)
@@ -266,6 +272,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           triggerHaptic('notificationError');
           if (scoreBoard.lives <= 0) {
             dispatch({ type: 'game-over' });
+            playSound('game_over');
             ball.velocity = [0, 0];
           } else {
             scoreBoard.waitingToStart = true;
@@ -304,6 +311,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           ball.velocity[0] = Math.abs(ball.velocity[0]);
           triggerHaptic('impactMedium');
           dispatch({ type: 'paddle-hit' });
+          playSound('tink');
         }
       }
 
@@ -333,6 +341,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         spawnParticles(entities, ball.position, '#FFFFFF');
         triggerHaptic('impactMedium');
         dispatch({ type: 'paddle-hit' });
+        playSound('tink');
       }
 
       // 5. Brick Collisions
@@ -405,11 +414,13 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
               explodeMine(entities, brick.position, bKey, dispatch);
             } else {
               dispatch({ type: brick.type === 'stone' ? 'brick-hit' : 'brick-break' });
+              playSound(brick.type === 'stone' ? 'hit_hurt' : 'explosion');
               spawnParticles(entities, brick.position, brick.color);
               attemptPowerUpSpawn(entities, brick.position);
             }
           } else {
             dispatch({ type: 'brick-hit' });
+            playSound('hit_hurt');
           }
           collidedThisStep = true;
           break; // One brick hit per sub-step
@@ -427,6 +438,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
   if (clearableBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
     dispatch({ type: 'win', score: scoreBoard.score });
+    playSound('victory');
     // Safety check: Filter out any ball keys that might have been deleted this frame
     activeBallKeys.forEach(k => {
       if (entities[k]) entities[k].velocity = [0, 0];
@@ -442,6 +454,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       applyPowerUp(entities, pu.type, activeBallKeys.length);
       triggerHaptic('impactMedium');
       dispatch({ type: 'powerup-collect' });
+      playSound('power_up');
       delete entities[key];
     }
     if (pu.position[1] > SCREEN_HEIGHT) delete entities[key];

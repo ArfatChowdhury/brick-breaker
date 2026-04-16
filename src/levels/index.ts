@@ -35,6 +35,10 @@ import { Thailand } from './Thailand';
 import { Ireland } from './Ireland';
 import { Cuba } from './Cuba';
 import { Kenya } from './Kenya';
+import { Vietnam } from './Vietnam';
+import { Morocco } from './Morocco';
+import { Netherlands } from './Netherlands';
+import { WorldTourFinale } from './WorldTourFinale';
 import { LevelConfig } from './types';
 
 export const FLAG_LEVELS: LevelConfig[] = [
@@ -68,6 +72,9 @@ export const FLAG_LEVELS: LevelConfig[] = [
   Ireland,
   Cuba,
   Kenya,
+  Vietnam,
+  Morocco,
+  Netherlands,
   Fortress,
   UK,
   Brazil,
@@ -75,6 +82,7 @@ export const FLAG_LEVELS: LevelConfig[] = [
   Hourglass,
   DiamondCore,
   SouthAfricaMaze,
+  WorldTourFinale,
 ];
 
 

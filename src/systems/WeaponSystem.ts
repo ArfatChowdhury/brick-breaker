@@ -1,6 +1,7 @@
 import { Dimensions } from 'react-native';
 import Missile from '../components/Missile';
 import Mine from '../components/Mine';
+import { playSound } from '../utils/audio';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -24,6 +25,7 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
           const newMode = scoreBoard.weaponMode === 'AIM' ? 'NORMAL' : 'AIM';
           scoreBoard.weaponMode = newMode;
           dispatch({ type: 'weapon-mode-change', mode: newMode });
+          playSound('blip_select');
         }
         return;
       } else if (pageY > 320 && pageY < 450) {
@@ -32,6 +34,7 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
           const newMode = scoreBoard.weaponMode === 'MINE' ? 'NORMAL' : 'MINE';
           scoreBoard.weaponMode = newMode;
           dispatch({ type: 'weapon-mode-change', mode: newMode });
+          playSound('blip_select');
         }
         return;
       }
@@ -55,6 +58,7 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
           dispatch({ type: 'weapon-mode-change', mode: 'NORMAL' });
           entities.paddle.recoil = 20; // Hard Kick
           entities.paddle.flash = 8;   // Muzzle Flash
+          playSound('laser_shoot');
           
           entities[`missile_left_${Date.now()}`] = {
             position: [leftPodX, podY],
@@ -104,6 +108,7 @@ const WeaponSystem = (entities: any, { touches, dispatch }: any) => {
             dispatch({ type: 'weapon-mode-change', mode: 'NORMAL' });
             entities.paddle.recoil = 12;
             entities.paddle.flash = 4;
+            playSound('blip_select');
             
             // Launch from both pods (Double deployment for satisfaction)
             entities[`mine_left_${Date.now()}`] = {
