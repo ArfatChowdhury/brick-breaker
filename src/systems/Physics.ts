@@ -542,7 +542,7 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
       scoreBoard.powerUpState.FIRE = currentTime + 10000;
       break;
     case 'LIFE':
-      scoreBoard.lives += 1;
+      if (scoreBoard.lives < 5) scoreBoard.lives += 1;
       break;
     case 'MULTI': {
       // TRIPLE logic: Current count * 3 total. If we have N, add 2N.

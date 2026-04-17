@@ -54,7 +54,7 @@ export const getEntities = (levelIndex = 0) => {
       maxSpeed: 22,
       trapRelocations: 0,
       startTime: Date.now(),
-      starThresholds: level.starThresholds ?? [45, 90], // Default thresholds
+      starThresholds: level.starThresholds ?? [90, 120], // Default thresholds
       renderer: ScoreBoard,
     },
     paddle: {

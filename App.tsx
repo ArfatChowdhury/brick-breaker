@@ -14,7 +14,8 @@ import mobileAds, {
   BannerAdSize, 
   TestIds, 
   RewardedInterstitialAd, 
-  AdEventType 
+  AdEventType,
+  RewardedAdEventType 
 } from 'react-native-google-mobile-ads';
 import { playSound, setSoundEnabled } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,10 +25,16 @@ import WeaponBar from './src/components/WeaponBar';
 import FlagMiniPreview from './src/components/FlagMiniPreview';
 import ShopOverlay from './src/components/ShopOverlay';
 
-const AD_UNIT_ID = 'ca-app-pub-3315420037530922/8840261664';
+const REWARDED_AD_ID = 'ca-app-pub-3315420037530922/8840261664';
 const BANNER_AD_ID = 'ca-app-pub-3315420037530922/9091543100';
 
-const rewardedInterstitial = RewardedInterstitialAd.createForAdUnitID(AD_UNIT_ID);
+// One instance for Shop (earn stars), one for in-game revive
+const shopRewardedAd = RewardedInterstitialAd.createForAdRequest(REWARDED_AD_ID, {
+  requestNonPersonalizedAdsOnly: true,
+});
+const reviveRewardedAd = RewardedInterstitialAd.createForAdRequest(REWARDED_AD_ID, {
+  requestNonPersonalizedAdsOnly: true,
+});
 
 
 
@@ -59,9 +66,15 @@ export default function App() {
   const [currentTheme, setCurrentTheme] = useState('theme_classic');
   const [weaponCounts, setWeaponCounts] = useState({ missiles: 3, mines: 3 });
   const [lastStarsEarned, setLastStarsEarned] = useState(0);
+  const [finalTime, setFinalTime] = useState(0);
   
   const [showShop, setShowShop] = useState(false);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
+  const [adPurpose, setAdPurpose] = useState<'shop' | 'revive'>('shop');
+  const [canRevive, setCanRevive] = useState(false);
+  const [adsReady, setAdsReady] = useState(false); // Gate banner until AdMob is initialized
+  const [showBranding, setShowBranding] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   
   const gameEngineRef = useRef<any>(null);
 
@@ -88,6 +101,7 @@ export default function App() {
   useEffect(() => {
     mobileAds().initialize().then(() => {
       console.log('AdMob Initialized');
+      setAdsReady(true); // Now safe to render BannerAd
     });
     loadProgress();
   }, []);
@@ -140,6 +154,12 @@ export default function App() {
         setSoundEnabledState(enabled);
         setSoundEnabled(enabled);
       }
+
+      // Load branding preference
+      const savedBranding = await AsyncStorage.getItem('@show_branding');
+      if (savedBranding !== null) {
+        setShowBranding(JSON.parse(savedBranding));
+      }
     } catch (e) { console.log('Error loading progress', e); }
 
   };
@@ -166,7 +186,7 @@ export default function App() {
   const onEvent = (e: any) => {
     switch (e.type) {
       case 'game-over':
-        setRunning(false); setGo(true); break;
+        setRunning(false); setGo(true); setCanRevive(true); break;
       case 'win':
         handleWin(e.score); break;
       case 'lose-life':
@@ -200,13 +220,14 @@ export default function App() {
 
   const handleWin = (finalScore: number, timeTaken?: number) => {
     setRunning(false); setWin(true); setWaitingToStart(true);
-    playSound('win'); triggerHaptic('notificationSuccess');
+    playSound('victory'); triggerHaptic('notificationSuccess');
 
     // ── Star Calculation ──
     const level = FLAG_LEVELS[currentLevel];
-    const thresholds = level.starThresholds || [45, 90];
+    const thresholds = level.starThresholds || [90, 120];
     let stars = 1;
     if (timeTaken) {
+      setFinalTime(timeTaken);
       if (timeTaken < thresholds[0]) stars = 3;
       else if (timeTaken < thresholds[1]) stars = 2;
     }
@@ -281,7 +302,7 @@ export default function App() {
   const togglePause = () => { setPaused(p => !p); triggerHaptic('impactLight'); };
 
   const reset = () => {
-    setGo(false); setWin(false); setRunning(true); setWaitingToStart(true);
+    setGo(false); setWin(false); setRunning(true); setWaitingToStart(true); setCanRevive(false);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
       const ents = getEntities(currentLevel);
@@ -293,7 +314,56 @@ export default function App() {
     }
   };
 
+  // ── Revive Player via Rewarded Ad ──
+  const handleContinueWithAd = () => {
+    setIsWatchingAd(true);
+    setAdPurpose('revive');
+
+    // Store unsubscribe fns so we clean up after the ad flow
+    let unsubLoaded: (() => void) | undefined;
+    let unsubEarned: (() => void) | undefined;
+    let unsubClosed: (() => void) | undefined;
+    let rewarded = false;
+
+    const cleanup = () => {
+      unsubLoaded?.();
+      unsubEarned?.();
+      unsubClosed?.();
+    };
+
+    unsubLoaded = reviveRewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      reviveRewardedAd.show();
+    });
+    unsubEarned = reviveRewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+      rewarded = true;
+      triggerHaptic('notificationSuccess');
+      playSound('power_up');
+    });
+    unsubClosed = reviveRewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+      setIsWatchingAd(false);
+      cleanup(); // Remove all listeners — prevents ad from auto-showing again
+      if (rewarded) {
+        // Restore 1 life without resetting level
+        setGo(false);
+        setCanRevive(false);
+        setRunning(true);
+        setWaitingToStart(true);
+        if (gameEngineRef.current) {
+          const state = gameEngineRef.current.state;
+          if (state?.entities?.scoreBoard) {
+            state.entities.scoreBoard.lives = 1;
+            state.entities.scoreBoard.waitingToStart = true;
+          }
+        }
+      }
+    });
+
+    reviveRewardedAd.load();
+  };
+
   const backToMenu = () => {
+    playSound('click');
+    setCanRevive(false);
     setShowMenu(true); setRunning(false); setWin(false); setGo(false); setPaused(false);
   };
 
@@ -316,29 +386,41 @@ export default function App() {
   const handleBuy = (item: any) => {
     if (item.type === 'AD') {
       setIsWatchingAd(true);
-      
-      const unsubscribeLoaded = rewardedInterstitial.addAdEventListener(AdEventType.LOADED, () => {
-        rewardedInterstitial.show();
+      setAdPurpose('shop');
+
+      // Store unsub fns — must clean up or listeners accumulate across calls
+      let unsubLoaded: (() => void) | undefined;
+      let unsubEarned: (() => void) | undefined;
+      let unsubClosed: (() => void) | undefined;
+      let starsAwarded = false;
+
+      const cleanup = () => {
+        unsubLoaded?.();
+        unsubEarned?.();
+        unsubClosed?.();
+      };
+
+      unsubLoaded = shopRewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        shopRewardedAd.show();
       });
 
-      const unsubscribeEarned = rewardedInterstitial.addAdEventListener(
-        AdEventType.EARNED_REWARD,
-        reward => {
+      unsubEarned = shopRewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+        starsAwarded = true;
+        triggerHaptic('notificationSuccess');
+        // Don't call .load() here — let CLOSED handle cleanup
+      });
+
+      unsubClosed = shopRewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+        setIsWatchingAd(false);
+        cleanup(); // Remove all listeners — prevents ad from auto-showing again
+        if (starsAwarded) {
           const newBalance = starBalance + 5;
           setStarBalance(newBalance);
-          setIsWatchingAd(false);
           saveProgress(unlockedLevels, highScores, { stars: newBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme });
-          triggerHaptic('notificationSuccess');
-          rewardedInterstitial.load();
-        },
-      );
-
-      const unsubscribeClosed = rewardedInterstitial.addAdEventListener(AdEventType.CLOSED, () => {
-        setIsWatchingAd(false);
-        rewardedInterstitial.load();
+        }
       });
 
-      rewardedInterstitial.load();
+      shopRewardedAd.load();
       return;
     }
 
@@ -352,8 +434,17 @@ export default function App() {
     if (item.id === 'missile_3') newMissiles += 3;
     if (item.id === 'mine_2') newMines += 2;
     if (item.type === 'THEME') {
-      newThemes.push(item.id);
+      if (!newThemes.includes(item.id)) newThemes.push(item.id);
       setUnlockedThemes(newThemes);
+      // Immediately equip the new theme
+      setCurrentTheme(item.id);
+      // Apply to running game if mid-level
+      if (gameEngineRef.current) {
+        const state = gameEngineRef.current.state;
+        if (state?.entities?.paddle) {
+          state.entities.paddle.themeId = item.id;
+        }
+      }
     }
 
     setStarBalance(newBalance);
@@ -366,7 +457,7 @@ export default function App() {
       missiles: newMissiles, 
       mines: newMines,
       themes: newThemes,
-      currentTheme
+      currentTheme: item.type === 'THEME' ? item.id : currentTheme,
     });
     triggerHaptic('notificationSuccess');
     playSound('blip_select');
@@ -434,9 +525,20 @@ export default function App() {
             style={styles.gameContainer}
             systems={[MovePaddle, WeaponSystem, Physics]}
             entities={getEntities(currentLevel)}
-            running={running && !paused && !win && !go}
+            running={running && !paused && !win && !go && !showShop}
             onEvent={onEvent}
           />
+
+          {/* BACKGROUND BRANDING WATERMARK */}
+          {showBranding && !showMenu && (
+            <View style={styles.brandingLayer} pointerEvents="none">
+              <View style={styles.logoCircleSmall}>
+                <Text style={styles.gameLogoSubSmall}>🚀</Text>
+              </View>
+              <Text style={styles.brandingText}>BRICKSTRIKE</Text>
+              <Text style={styles.brandingSubText}>W O R L D  T O U R</Text>
+            </View>
+          )}
 
           {!showMenu && !win && !go && (
             <>
@@ -446,15 +548,6 @@ export default function App() {
                   <Text style={styles.pauseIcon}>{paused ? '▶' : '⏸'}</Text>
                 </View>
               </TouchableOpacity>
-
-              {/* Fixed Banner Ad during Gameplay */}
-              <View style={styles.gameBannerContainer}>
-                <BannerAd
-                  unitId={BANNER_AD_ID}
-                  size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                  requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-                />
-              </View>
 
               {/* Level name in-game HUD — Moved up to stay clear of the ad */}
               <View style={styles.hudLevelName} pointerEvents="none">
@@ -522,7 +615,7 @@ export default function App() {
                       <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart]}>
                         <Text style={styles.overlayBtnText}>↺  RESTART</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setShowShop(true); setPaused(false); }} style={[styles.overlayBtn, styles.btnNext]}>
+                      <TouchableOpacity onPress={() => { setShowShop(true); }} style={[styles.overlayBtn, styles.btnNext]}>
                         <Text style={[styles.overlayBtnText, { color: '#000' }]}>🛒  GO TO SHOP</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit]}>
@@ -543,80 +636,141 @@ export default function App() {
         {/* Main Menu */}
         {showMenu && (
           <View style={styles.menuContainer}>
-            {/* Header */}
+            {/* RESTORED ROCKET HEADER */}
             <View style={styles.menuHeader}>
-              <View style={styles.logoCircle}>
-                <Text style={styles.gameLogoSub}>🚀</Text>
+              <View style={styles.headerTop}>
+                <View style={styles.logoGroup}>
+                  <View style={styles.logoCircle}>
+                    <Text style={styles.gameLogoSub}>🚀</Text>
+                  </View>
+                  <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
+                  <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.gearButton}>
+                  <Text style={styles.gearIcon}>⚙️</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
-              <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
-              <TouchableOpacity id="sound-toggle-menu" onPress={toggleSound} style={styles.soundToggleBtn}>
-                <Text style={styles.soundToggleText}>
-                  {soundEnabled ? '🔊  SOUND ON' : '🔇  SOUND OFF'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowShop(true)} style={[styles.soundToggleBtn, { top: 70, backgroundColor: '#FFEE58' }]}>
-                <Text style={[styles.soundToggleText, { color: '#000' }]}>🛒  GET MORE WEAPONS</Text>
+
+              <TouchableOpacity
+                onPress={() => setShowShop(true)}
+                style={styles.headerShopCard}
+                activeOpacity={0.8}
+              >
+                <View style={styles.shopCardInfo}>
+                  <Text style={styles.shopCardTitle}>ARMORY & SHOP</Text>
+                  <Text style={styles.shopCardStars}>⭐ {starBalance} STARS</Text>
+                </View>
+                <View style={styles.shopCardAction}>
+                  <Text style={styles.shopCardActionText}>SHOP</Text>
+                  <Text style={styles.shopCardArrow}>→</Text>
+                </View>
               </TouchableOpacity>
             </View>
 
-
-            {/* Level Grid */}
+            {/* Level Grid - Winding Path */}
             <ScrollView
               contentContainerStyle={styles.levelGrid}
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.gridTitle}>CHOOSE YOUR DESTINATION</Text>
-              <View style={styles.gridContent}>
+              <View style={styles.pathContent}>
                 {FLAG_LEVELS.map((lvl, index) => {
                   const isUnlocked = unlockedLevels.includes(index);
-                  const best = highScores[lvl.id] || 0;
-                  return (
-                    <TouchableOpacity
-                      key={lvl.id}
-                      disabled={!isUnlocked}
-                      onPress={() => startLevel(index)}
-                      style={[styles.levelCard, !isUnlocked && styles.levelCardLocked]}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.flagPreview}>
-                        <FlagMiniPreview
-                          flagColors={lvl.flagColors}
-                          flagOrientation={lvl.flagOrientation}
-                          fallbackColor={lvl.backgroundColor}
-                        />
-                        {!isUnlocked && (
-                          <View style={styles.lockOverlay}>
-                            <Text style={styles.lockIcon}>🔒</Text>
-                          </View>
-                        )}
-                      </View>
+                  const entry = highScores[lvl.id] || 0;
+                  const score = typeof entry === 'string' ? entry.split('|')[0] : entry;
+                  const stars = typeof entry === 'string' ? parseInt(entry.split('|')[1]) : (entry > 0 ? 1 : 0);
+                  
+                  // Zig-zag logic: Left - Center - Right - Center - Repeat
+                  const positions = ['flex-start', 'center', 'flex-end', 'center'];
+                  const align = positions[index % 4] as any;
 
-                      <View style={styles.levelInfo}>
-                        <Text style={styles.levelName}>{lvl.name}</Text>
-                        {renderDifficultyStars(lvl.id)}
-                        {isUnlocked && best > 0 && (() => {
-                          const s = typeof best === 'string' ? best.split('|')[0] : best;
-                          return <Text style={styles.bestScore}>⭐ {parseInt(s).toLocaleString()}</Text>;
-                        })()}
+                  return (
+                    <View key={lvl.id} style={[styles.pathNode, { alignSelf: align }]}>
+                      {/* Connector Line to next level */}
+                      {index < FLAG_LEVELS.length - 1 && (
+                        <View style={[
+                          styles.pathConnector,
+                          { 
+                            transform: [
+                              { rotate: align === 'flex-start' ? '45deg' : align === 'flex-end' ? '-45deg' : '0deg' },
+                              { translateX: align === 'flex-start' ? 40 : align === 'flex-end' ? -40 : 0 }
+                            ] 
+                          }
+                        ]} />
+                      )}
+
+                      <TouchableOpacity
+                        disabled={!isUnlocked}
+                        onPress={() => startLevel(index)}
+                        style={[styles.circleCard, !isUnlocked && styles.cardLocked]}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.circlePreviewWrapper}>
+                          <FlagMiniPreview
+                            flagColors={lvl.flagColors}
+                            flagOrientation={lvl.flagOrientation}
+                            fallbackColor={lvl.backgroundColor}
+                          />
+                          {!isUnlocked && (
+                            <View style={styles.cardLockOverlay}>
+                              <Text style={styles.cardLockIcon}>🔒</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      <View style={styles.nodeInfo}>
+                        <Text style={styles.cardLevelName}>{lvl.name}</Text>
+                        <View style={styles.cardStarsRow}>
+                          {[1, 2, 3].map(i => (
+                            <Text key={i} style={[styles.cardStar, i <= stars && styles.cardStarActive]}>★</Text>
+                          ))}
+                        </View>
                       </View>
-                    </TouchableOpacity>
+                    </View>
                   );
                 })}
               </View>
+
+              <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
+                <Text style={styles.resetText}>RESET DATA</Text>
+              </TouchableOpacity>
             </ScrollView>
+          </View>
+        )}
 
-            <View style={{ alignItems: 'center', marginVertical: 10 }}>
-              <BannerAd
-                unitId={BANNER_AD_ID}
-                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                requestOptions={{ requestNonPersonalizedAdsOnly: true }}
-              />
+        {/* SETTINGS OVERLAY */}
+        {showSettings && (
+          <View style={styles.overlay}>
+            <View style={styles.settingsCard}>
+              <Text style={styles.pauseTitle}>SETTINGS</Text>
+              <View style={styles.settingsGroup}>
+                <Text style={styles.settingLabel}>AUDIO</Text>
+                <TouchableOpacity onPress={toggleSound} style={[styles.settingToggle, soundEnabled && styles.toggleActive]}>
+                  <Text style={styles.toggleText}>{soundEnabled ? 'ENABLED' : 'MUTED'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.settingsGroup}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>SOCIAL BRANDING</Text>
+                  <Text style={styles.settingSub}>Watermark overlay for recording</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newVal = !showBranding;
+                    setShowBranding(newVal);
+                    AsyncStorage.setItem('@show_branding', JSON.stringify(newVal));
+                  }}
+                  style={[styles.settingToggle, showBranding && styles.toggleActive]}
+                >
+                  <Text style={styles.toggleText}>{showBranding ? 'ON' : 'OFF'}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeSettingsBtn}>
+                <Text style={styles.closeSettingsText}>DONE</Text>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
-              <Text style={styles.resetText}>RESET PROGRESS</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -640,6 +794,7 @@ export default function App() {
                   </View>
                   <Text style={styles.resultStarSub}>+{lastStarsEarned} STARS EARNED</Text>
                   <View style={styles.resultEconomy}>
+                    <Text style={styles.resultEcoText}>TIME: {Math.floor(finalTime / 60)}:{(finalTime % 60).toString().padStart(2, '0')}</Text>
                     <Text style={styles.resultEcoText}>TOTAL ⭐ {starBalance}</Text>
                   </View>
                 </View>
@@ -653,6 +808,15 @@ export default function App() {
                 <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnResume]}>
                   <Text style={styles.overlayBtnText}>{go ? '↺  RETRY' : '↺  REPLAY'}</Text>
                 </TouchableOpacity>
+                {/* CONTINUE WITH AD — only on Game Over, not on Win */}
+                {go && canRevive && (
+                  <TouchableOpacity
+                    onPress={handleContinueWithAd}
+                    style={[styles.overlayBtn, styles.btnContinueAd]}
+                  >
+                    <Text style={[styles.overlayBtnText, { color: '#000' }]}>📺  CONTINUE (Watch Ad)</Text>
+                  </TouchableOpacity>
+                )}
                 {win && currentLevel + 1 < FLAG_LEVELS.length && (
                   <TouchableOpacity
                     onPress={() => startLevel(currentLevel + 1)}
@@ -671,8 +835,20 @@ export default function App() {
           <ShopOverlay
             starBalance={starBalance}
             unlockedThemes={unlockedThemes}
+            currentTheme={currentTheme}
             onClose={() => setShowShop(false)}
             onBuy={handleBuy}
+            onEquipTheme={(themeId) => {
+              setCurrentTheme(themeId);
+              // Apply immediately to running game
+              if (gameEngineRef.current) {
+                const state = gameEngineRef.current.state;
+                if (state?.entities?.paddle) {
+                  state.entities.paddle.themeId = themeId;
+                }
+              }
+              saveProgress(unlockedLevels, highScores, { stars: starBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme: themeId });
+            }}
           />
         )}
 
@@ -682,8 +858,22 @@ export default function App() {
             <View style={styles.resultCard}>
               <Text style={styles.resultEmoji}>📺</Text>
               <Text style={styles.resultTitle}>LOADING AD...</Text>
-              <Text style={styles.resultLevel}>Wait for Reward</Text>
+              <Text style={styles.resultLevel}>
+                {adPurpose === 'revive' ? 'Watch to Continue Playing!' : 'Watch to Earn Stars!'}
+              </Text>
             </View>
+          </View>
+        )}
+        {/* Global Fixed Banner Ad — only render once AdMob is initialized */}
+        {adsReady && (
+          <View style={styles.globalAdContainer}>
+            <BannerAd
+              unitId={BANNER_AD_ID}
+              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+              requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+              onAdLoaded={() => console.log('[Banner] Ad loaded')}
+              onAdFailedToLoad={(e) => console.log('[Banner] Ad failed:', e)}
+            />
           </View>
         )}
       </View>
@@ -734,6 +924,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     zIndex: 4,
+  },
+  globalAdContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0, right: 0,
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 10, 15, 0.8)',
+    zIndex: 5000,
+    paddingBottom: 2, // Slight lift
   },
   hudLevelText: {
     color: 'rgba(255,255,255,0.4)',
@@ -809,6 +1008,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEB3B',
     borderRadius: 30,
     padding: 30,
+    paddingBottom: 60, // Space for global ad
     alignItems: 'center',
     borderWidth: 4,
     borderColor: '#000',
@@ -853,6 +1053,7 @@ const styles = StyleSheet.create({
   btnRestart: { backgroundColor: '#2196F3' },
   btnExit: { backgroundColor: '#F44336' },
   btnNext: { backgroundColor: '#FFC107' },
+  btnContinueAd: { backgroundColor: '#00E676', borderColor: '#000' },
 
   // ── Result Card ───────────────────────────
   resultCard: {
@@ -860,6 +1061,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEB3B',
     borderRadius: 30,
     padding: 30,
+    paddingBottom: 60, // Space for global ad
     alignItems: 'center',
     borderWidth: 4,
     borderColor: '#000',
@@ -921,191 +1123,279 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
-  // ── Main Menu ─────────────────────────────
+  // ── Branding Layer ────────────────────────
+  brandingLayer: {
+    position: 'absolute',
+    bottom: 180, // Moved higher as requested
+    left: 0, right: 0,
+    alignItems: 'center',
+    opacity: 0.15,
+    zIndex: 0,
+  },
+  logoCircleSmall: {
+    width: 40, height: 40,
+    borderRadius: 20,
+    backgroundColor: '#4ECDC4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  gameLogoSubSmall: { fontSize: 18 },
+  brandingText: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  brandingSubText: {
+    color: '#4ECDC4',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginTop: -2,
+  },
+
+  // ── Main Menu Redesign ────────────────────
   menuContainer: {
     flex: 1,
-    backgroundColor: '#0F1014', // Extreme Dark
-    paddingBottom: 20,
+    backgroundColor: '#0A0B10',
+    paddingBottom: 60,
   },
   menuHeader: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 40,
-    backgroundColor: '#16171D',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    backgroundColor: '#11131A',
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#222',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  logoGroup: {
+    alignItems: 'center',
   },
   logoCircle: {
-      width: 70, height: 70,
-      borderRadius: 35,
+      width: 60, height: 60,
+      borderRadius: 30,
       backgroundColor: '#4ECDC4',
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 15,
+      marginBottom: 10,
       borderWidth: 3,
       borderColor: '#FFF',
   },
-  gameLogoSub: {
-    fontSize: 32,
-  },
+  gameLogoSub: { fontSize: 28 },
   gameLogo: {
     color: '#FFF',
-    fontSize: 38,
+    fontSize: 28,
     fontWeight: '900',
     letterSpacing: -1,
   },
   gameTagline: {
     color: '#4ECDC4',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 3,
-    marginTop: 4,
   },
-
-  // ── Level Grid ─────────────────────────────
-  levelGrid: {
-    paddingBottom: 40,
-  },
-  gridTitle: {
-      color: '#666',
-      fontSize: 11,
-      fontWeight: '900',
-      letterSpacing: 2,
-      textAlign: 'center',
-      marginTop: 25,
-      marginBottom: 15,
-  },
-  gridContent: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      paddingHorizontal: 10,
-  },
-  levelCard: {
-    width: '44%',
-    margin: 8,
-    flexDirection: 'row',
+  gearButton: {
+    width: 44, height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1C1D24',
-    borderRadius: 16,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  levelCardLocked: {
-    opacity: 0.5,
-    backgroundColor: '#16171D',
-  },
-  levelInfo: {
-      flex: 1,
-      marginLeft: 10,
-  },
-  flagPreview: {
-    width: 50, height: 35,
-    borderRadius: 8,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  lockIcon: { fontSize: 14 },
-  levelName: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '900',
-    marginBottom: 2,
-  },
-  starsRow: {
+  gearIcon: { fontSize: 22 },
+
+  headerShopCard: {
     flexDirection: 'row',
+    backgroundColor: '#FFEE58',
+    borderRadius: 18,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 2,
+    borderColor: '#000',
   },
-  star: { fontSize: 8, color: '#444' },
-  starActive: { color: '#FFD54F' },
-  bestScore: {
-    color: '#4ECDC4',
+  shopCardInfo: { flex: 1 },
+  shopCardTitle: {
+    color: '#000',
     fontSize: 10,
     fontWeight: '900',
-    marginTop: 4,
+    letterSpacing: 1,
+    opacity: 0.6,
+  },
+  shopCardStars: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  shopCardAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  shopCardActionText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '900',
+    marginRight: 4,
+  },
+  shopCardArrow: { color: '#FFEE58', fontSize: 12, fontWeight: '900' },
+
+  // ── Winding Path ──────────────────────────
+  levelGrid: {
+    paddingVertical: 40,
+    paddingBottom: 100,
+  },
+  pathContent: {
+    paddingHorizontal: 30,
+    gap: 40,
+  },
+  pathNode: {
+    width: 100,
+    alignItems: 'center',
+  },
+  pathConnector: {
+    position: 'absolute',
+    top: 60,
+    width: 2,
+    height: 60,
+    backgroundColor: 'rgba(78, 205, 196, 0.3)',
+    zIndex: -1,
+  },
+  circleCard: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#1A1C24',
+    borderWidth: 4,
+    borderColor: '#333',
+    overflow: 'hidden',
+    shadowColor: '#4ECDC4',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+  cardLocked: { 
+    opacity: 0.5,
+    borderColor: '#222',
+  },
+  circlePreviewWrapper: { flex: 1 },
+  nodeInfo: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  cardLevelName: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  cardStarsRow: {
+    flexDirection: 'row',
+    marginTop: 2,
+    gap: 2,
+  },
+  cardStar: { fontSize: 10, color: 'rgba(255,255,255,0.1)' },
+  cardStarActive: { color: '#FFD54F' },
+  cardScoreBadge: {
+    position: 'absolute',
+    top: 20, right: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(78, 205, 196, 0.9)',
+    borderWidth: 1,
+    borderColor: '#FFF',
+  },
+  cardScoreText: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
-  // ── Reset Button ─────────────────────────
-  resetButton: {
-    marginTop: 40,
-    marginHorizontal: 80,
-    paddingVertical: 12,
-    backgroundColor: 'transparent',
-    borderRadius: 15,
+  // ── Settings Overlay ─────────────────────
+  settingsCard: {
+    width: '85%',
+    backgroundColor: '#16171D',
+    borderRadius: 30,
+    padding: 30,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#333',
+  },
+  settingsGroup: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  settingInfo: { flex: 1, marginRight: 10 },
+  settingLabel: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  settingSub: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  settingToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#222',
     borderWidth: 1,
     borderColor: '#333',
+    minWidth: 90,
     alignItems: 'center',
   },
-  resetText: {
-    color: '#666',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1,
+  toggleActive: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#66BB6A',
   },
-  introOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  introSub: {
-    color: '#4ECDC4',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 4,
-    marginBottom: 5,
-    textShadowColor: '#000',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-  },
-  introTitle: {
+  toggleText: {
     color: '#FFF',
-    fontSize: 56,
+    fontSize: 12,
     fontWeight: '900',
-    textAlign: 'center',
-    textShadowColor: '#000',
-    textShadowOffset: { width: 4, height: 4 },
-    textShadowRadius: 10,
   },
-  weaponInstructionOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 200,
-  },
-  weaponInstructionText: {
-    color: '#FFEB3B',
-    fontSize: 22,
-    fontWeight: '900',
-    textShadowColor: '#000',
-    textShadowOffset: { width: 4, height: 4 },
-    textShadowRadius: 8,
-    textAlign: 'center',
-  },
-  // Sound toggle styles
-  soundToggleBtn: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  closeSettingsBtn: {
+    marginTop: 30,
+    width: '100%',
+    paddingVertical: 16,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#FFF',
+    alignItems: 'center',
   },
-  soundToggleText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1,
+  closeSettingsText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
   },
-  btnSound: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.3)',
+
+  // ── Legacy Compatibility ──────────────────
+  resetButton: {
+    marginTop: 20,
+    marginHorizontal: 100,
+    paddingVertical: 10,
+    alignItems: 'center',
+    opacity: 0.3,
   },
+  resetText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
 });

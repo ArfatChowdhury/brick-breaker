@@ -112,7 +112,12 @@ const Paddle: React.FC<PaddleProps> = ({
   return (
     <View style={baseStyle}>
       {/* Glossy Highlight for Cartoon effect */}
-      <View style={styles.gloss} />
+      <View style={[
+        styles.gloss, 
+        { 
+          backgroundColor: isNeon ? 'rgba(225,190,231,0.3)' : isInferno ? 'rgba(255,171,145,0.2)' : 'rgba(255,255,255,0.25)' 
+        }
+      ]} />
       
       {/* Bottom deeper shadow area */}
       <View style={styles.bottomShadow} />
@@ -145,7 +150,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '40%',
-    backgroundColor: isNeon ? 'rgba(225,190,231,0.3)' : isInferno ? 'rgba(255,171,145,0.2)' : 'rgba(255,255,255,0.25)',
   },
   bottomShadow: {
     position: 'absolute',
