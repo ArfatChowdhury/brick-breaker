@@ -638,103 +638,89 @@ export default function App() {
           <View style={styles.menuContainer}>
             {/* RESTORED ROCKET HEADER */}
             <View style={styles.menuHeader}>
-              <View style={styles.headerTop}>
-                <View style={styles.logoGroup}>
-                  <View style={styles.logoCircle}>
-                    <Text style={styles.gameLogoSub}>🚀</Text>
-                  </View>
-                  <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
-                  <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
+              <View style={styles.logoGroup}>
+                <View style={styles.logoCircle}>
+                  <Text style={styles.gameLogoSub}>🚀</Text>
                 </View>
-                <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.gearButton}>
-                  <Text style={styles.gearIcon}>⚙️</Text>
-                </TouchableOpacity>
+                <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
+                <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
               </View>
-
-              <TouchableOpacity
-                onPress={() => setShowShop(true)}
-                style={styles.headerShopCard}
-                activeOpacity={0.8}
-              >
-                <View style={styles.shopCardInfo}>
-                  <Text style={styles.shopCardTitle}>ARMORY & SHOP</Text>
-                  <Text style={styles.shopCardStars}>⭐ {starBalance} STARS</Text>
-                </View>
-                <View style={styles.shopCardAction}>
-                  <Text style={styles.shopCardActionText}>SHOP</Text>
-                  <Text style={styles.shopCardArrow}>→</Text>
-                </View>
+              <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.gearButton}>
+                <Text style={styles.gearIcon}>⚙️</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Level Grid - Winding Path */}
-            <ScrollView
-              contentContainerStyle={styles.levelGrid}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.pathContent}>
-                {FLAG_LEVELS.map((lvl, index) => {
-                  const isUnlocked = unlockedLevels.includes(index);
-                  const entry = highScores[lvl.id] || 0;
-                  const score = typeof entry === 'string' ? entry.split('|')[0] : entry;
-                  const stars = typeof entry === 'string' ? parseInt(entry.split('|')[1]) : (entry > 0 ? 1 : 0);
-                  
-                  // Zig-zag logic: Left - Center - Right - Center - Repeat
-                  const positions = ['flex-start', 'center', 'flex-end', 'center'];
-                  const align = positions[index % 4] as any;
+            {/* Level Grid - Cartoon Board Style */}
+            <View style={styles.boardWrapper}>
+              <View style={styles.boardInner}>
+                
+                {/* Overlapping Title Badge */}
+                <View style={styles.boardHeaderBadge}>
+                  <Text style={styles.boardHeaderTitle}>CHOOSE LEVEL</Text>
+                </View>
 
-                  return (
-                    <View key={lvl.id} style={[styles.pathNode, { alignSelf: align }]}>
-                      {/* Connector Line to next level */}
-                      {index < FLAG_LEVELS.length - 1 && (
-                        <View style={[
-                          styles.pathConnector,
-                          { 
-                            transform: [
-                              { rotate: align === 'flex-start' ? '45deg' : align === 'flex-end' ? '-45deg' : '0deg' },
-                              { translateX: align === 'flex-start' ? 40 : align === 'flex-end' ? -40 : 0 }
-                            ] 
-                          }
-                        ]} />
-                      )}
+                <ScrollView
+                  contentContainerStyle={styles.boardScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.boardGrid}>
+                    {FLAG_LEVELS.map((lvl, index) => {
+                      const isUnlocked = unlockedLevels.includes(index);
+                      const entry = highScores[lvl.id] || 0;
+                      const score = typeof entry === 'string' ? entry.split('|')[0] : entry;
+                      const stars = typeof entry === 'string' ? parseInt(entry.split('|')[1]) : (entry > 0 ? 1 : 0);
 
-                      <TouchableOpacity
-                        disabled={!isUnlocked}
-                        onPress={() => startLevel(index)}
-                        style={[styles.circleCard, !isUnlocked && styles.cardLocked]}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.circlePreviewWrapper}>
-                          <FlagMiniPreview
-                            flagColors={lvl.flagColors}
-                            flagOrientation={lvl.flagOrientation}
-                            fallbackColor={lvl.backgroundColor}
-                          />
-                          {!isUnlocked && (
-                            <View style={styles.cardLockOverlay}>
-                              <Text style={styles.cardLockIcon}>🔒</Text>
+                      return (
+                        <View key={lvl.id} style={styles.boardItemWrapper}>
+                          <TouchableOpacity
+                            disabled={!isUnlocked}
+                            onPress={() => startLevel(index)}
+                            style={[styles.boardBtn, !isUnlocked && styles.boardBtnLocked]}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.boardFullFlag}>
+                              <FlagMiniPreview
+                                flagColors={lvl.flagColors}
+                                flagOrientation={lvl.flagOrientation}
+                                fallbackColor={lvl.backgroundColor}
+                              />
                             </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
+                            {!isUnlocked && (
+                              <View style={styles.boardBtnLockedInner}>
+                                <Text style={styles.boardBtnLockIcon}>🔒</Text>
+                              </View>
+                            )}
+                            {isUnlocked && <View style={styles.boardBtnGloss} />}
+                          </TouchableOpacity>
 
-                      <View style={styles.nodeInfo}>
-                        <Text style={styles.cardLevelName}>{lvl.name}</Text>
-                        <View style={styles.cardStarsRow}>
-                          {[1, 2, 3].map(i => (
-                            <Text key={i} style={[styles.cardStar, i <= stars && styles.cardStarActive]}>★</Text>
-                          ))}
+                          <View style={styles.boardItemInfo}>
+                            <Text style={styles.boardItemName} numberOfLines={1}>
+                              {lvl.name.toUpperCase()}
+                            </Text>
+                            <View style={styles.boardBtnStarsRow}>
+                              {[1, 2, 3].map(i => (
+                                <Text key={i} style={[styles.boardBtnStar, i <= stars && styles.boardBtnStarActive]}>★</Text>
+                              ))}
+                            </View>
+                          </View>
                         </View>
-                      </View>
-                    </View>
-                  );
-                })}
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                {/* Bottom Bar Controls */}
+                <View style={styles.boardBottomBar}>
+                  <TouchableOpacity onPress={resetProgress} style={[styles.boardBottomBtn, { backgroundColor: '#F44336' }]}>
+                    <Text style={styles.boardBottomBtnIcon}>↺</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowShop(true)} style={[styles.boardBottomBtn, { backgroundColor: '#4CAF50', flex: 1 }]}>
+                    <Text style={styles.boardBottomBtnText}>🛒 SHOP</Text>
+                  </TouchableOpacity>
+                </View>
+
               </View>
-
-              <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
-                <Text style={styles.resetText}>RESET DATA</Text>
-              </TouchableOpacity>
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -1170,12 +1156,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#11131A',
     borderBottomWidth: 1,
     borderBottomColor: '#222',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
+    alignItems: 'center', // Centering the logo perfectly
+    justifyContent: 'center',
   },
   logoGroup: {
     alignItems: 'center',
@@ -1204,6 +1186,9 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
   },
   gearButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
     width: 44, height: 44,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1253,78 +1238,175 @@ const styles = StyleSheet.create({
   },
   shopCardArrow: { color: '#FFEE58', fontSize: 12, fontWeight: '900' },
 
-  // ── Winding Path ──────────────────────────
-  levelGrid: {
-    paddingVertical: 40,
-    paddingBottom: 100,
+  // ── Cartoon Modal Board ───────────────────
+  boardWrapper: {
+    flex: 1,
+    paddingHorizontal: 15,
+    paddingBottom: 20,
+    justifyContent: 'center',
   },
-  pathContent: {
-    paddingHorizontal: 30,
-    gap: 40,
-  },
-  pathNode: {
-    width: 100,
-    alignItems: 'center',
-  },
-  pathConnector: {
-    position: 'absolute',
-    top: 60,
-    width: 2,
-    height: 60,
-    backgroundColor: 'rgba(78, 205, 196, 0.3)',
-    zIndex: -1,
-  },
-  circleCard: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#1A1C24',
-    borderWidth: 4,
-    borderColor: '#333',
-    overflow: 'hidden',
-    shadowColor: '#4ECDC4',
+  boardInner: {
+    flex: 1,
+    backgroundColor: '#0F1218', // Deep dark space background
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: '#00E5FF', // Neon Cyan
+    overflow: 'visible',
+    marginTop: 20, 
+    shadowColor: '#00E5FF',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
+  },
+  boardHeaderBadge: {
+    position: 'absolute',
+    top: -30,
+    alignSelf: 'center',
+    backgroundColor: '#0F1218',
+    paddingVertical: 10,
+    paddingHorizontal: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#FF00FF', // Neon Magenta
+    zIndex: 10,
+    shadowColor: '#FF00FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
     shadowRadius: 10,
   },
-  cardLocked: { 
-    opacity: 0.5,
-    borderColor: '#222',
-  },
-  circlePreviewWrapper: { flex: 1 },
-  nodeInfo: {
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  cardLevelName: {
+  boardHeaderTitle: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textShadowColor: '#FF00FF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  boardScroll: {
+    paddingTop: 45, // Leave room for the overlapping badge
+    paddingBottom: 20,
+    paddingHorizontal: 15,
+  },
+  boardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 15,
+  },
+  boardItemWrapper: {
+    width: 85,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  boardBtn: {
+    width: 85,
+    height: 60,
+    borderRadius: 10,
+    backgroundColor: '#1A1C24',
+    borderWidth: 2,
+    borderColor: '#00E5FF', // Neon Cyan
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  boardFullFlag: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  boardBtnLocked: {
+    backgroundColor: '#9E9E9E',
+    borderColor: '#424242',
+  },
+  boardBtnLockedInner: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  boardBtnLockIcon: {
+    fontSize: 20,
+    opacity: 0.9,
+  },
+  boardBtnGloss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '40%',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  boardItemInfo: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  boardItemName: {
+    color: '#00E5FF', // Glowing Neon Cyan
+    fontSize: 11,
     fontWeight: '900',
     textAlign: 'center',
+    marginBottom: 2,
+    textShadowColor: '#00E5FF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 5,
   },
-  cardStarsRow: {
+  boardBtnStarsRow: {
     flexDirection: 'row',
-    marginTop: 2,
-    gap: 2,
+    justifyContent: 'center',
+    gap: 3,
   },
-  cardStar: { fontSize: 10, color: 'rgba(255,255,255,0.1)' },
-  cardStarActive: { color: '#FFD54F' },
-  cardScoreBadge: {
-    position: 'absolute',
-    top: 20, right: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: 'rgba(78, 205, 196, 0.9)',
-    borderWidth: 1,
-    borderColor: '#FFF',
+  boardBtnStar: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.1)', // Very faint for inactive star
   },
-  cardScoreText: {
-    color: '#000',
-    fontSize: 12,
+  boardBtnStarActive: {
+    color: '#FFEA00', // Neon Yellow
+    textShadowColor: '#FFEA00', // Soft glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  
+  // Bottom Controls
+  boardBottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 10,
+    gap: 15,
+  },
+  boardBottomBtn: {
+    height: 50,
+    borderRadius: 16,
+    borderWidth: 4,
+    borderColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  boardBottomBtnIcon: {
+    color: '#FFF',
+    fontSize: 24,
     fontWeight: '900',
   },
-
+  boardBottomBtnText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
   // ── Settings Overlay ─────────────────────
   settingsCard: {
     width: '85%',
