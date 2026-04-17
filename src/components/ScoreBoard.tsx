@@ -104,7 +104,7 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({
 const styles = StyleSheet.create({
   hud: {
     ...StyleSheet.absoluteFillObject,
-    paddingTop: 36,
+    paddingTop: 22,
     paddingHorizontal: 14,
     zIndex: 100,
     justifyContent: 'flex-start',

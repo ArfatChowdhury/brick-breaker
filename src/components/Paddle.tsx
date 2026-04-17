@@ -9,6 +9,7 @@ interface PaddleProps {
   flash?: number;
   weaponMode?: 'NORMAL' | 'AIM' | 'MINE';
   recoil?: number;
+  themeId?: string;
 }
 
 const Paddle: React.FC<PaddleProps> = ({ 
@@ -18,7 +19,8 @@ const Paddle: React.FC<PaddleProps> = ({
   isFire, 
   flash = 0, 
   weaponMode = 'NORMAL',
-  recoil = 0
+  recoil = 0,
+  themeId = 'theme_classic'
 }) => {
   const width = size[0];
   const height = size[1];
@@ -49,20 +51,33 @@ const Paddle: React.FC<PaddleProps> = ({
     outputRange: [0, 0.3, 1],
   });
 
+  // ── Theme Mapping ──
+  const isNeon = themeId === 'theme_neon';
+  const isInferno = themeId === 'theme_inferno';
+
+  const getThemeStyles = () => {
+    if (isFire) return { bgColor: '#FF5252', borderColor: '#000', shadow: '#FF5252', glow: 15 };
+    if (isNeon) return { bgColor: '#9C27B0', borderColor: '#E1BEE7', shadow: '#E1BEE7', glow: 20 };
+    if (isInferno) return { bgColor: '#BF360C', borderColor: '#FFAB91', shadow: '#D84315', glow: 25 };
+    return { bgColor: color, borderColor: '#000000', shadow: '#000', glow: 0 };
+  };
+
+  const theme = getThemeStyles();
+
   const baseStyle: ViewStyle = {
     position: 'absolute' as const,
     left: x,
     top: y + recoil, 
     width: width,
     height: height,
-    backgroundColor: isFire ? '#FF5252' : color,
+    backgroundColor: theme.bgColor,
     borderRadius: 8,
     borderWidth: 3,
-    borderColor: '#000000',
-    shadowColor: isFire ? '#FF5252' : '#000',
+    borderColor: theme.borderColor,
+    shadowColor: theme.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
-    shadowRadius: isFire ? 15 : 0,
+    shadowRadius: theme.glow,
     elevation: 6,
     zIndex: 10,
     overflow: 'visible', 
@@ -130,7 +145,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '40%',
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: isNeon ? 'rgba(225,190,231,0.3)' : isInferno ? 'rgba(255,171,145,0.2)' : 'rgba(255,255,255,0.25)',
   },
   bottomShadow: {
     position: 'absolute',
@@ -138,7 +153,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: '20%',
-    backgroundColor: 'rgba(0,0,0,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
   },
   shine: {
     position: 'absolute',

@@ -9,12 +9,25 @@ import MovePaddle from './src/systems/MovePaddle';
 import Physics from './src/systems/Physics';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FLAG_LEVELS } from './src/levels';
+import mobileAds, { 
+  BannerAd, 
+  BannerAdSize, 
+  TestIds, 
+  RewardedInterstitialAd, 
+  AdEventType 
+} from 'react-native-google-mobile-ads';
 import { playSound, setSoundEnabled } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
 import WeaponSystem from './src/systems/WeaponSystem';
 import WeaponBar from './src/components/WeaponBar';
 import FlagMiniPreview from './src/components/FlagMiniPreview';
+import ShopOverlay from './src/components/ShopOverlay';
+
+const AD_UNIT_ID = 'ca-app-pub-3315420037530922/8840261664';
+const BANNER_AD_ID = 'ca-app-pub-3315420037530922/9091543100';
+
+const rewardedInterstitial = RewardedInterstitialAd.createForAdUnitID(AD_UNIT_ID);
 
 
 
@@ -37,7 +50,19 @@ export default function App() {
   const [waitingToStart, setWaitingToStart] = useState(true);
   const [weaponMode, setWeaponMode] = useState<'NORMAL' | 'AIM' | 'MINE'>('NORMAL');
   const [soundEnabled, setSoundEnabledState] = useState(true);
-  const [weaponCounts, setWeaponCounts] = useState({ missiles: 3, mines: 2 });
+  
+  // Economy State (Lifetime)
+  const [starBalance, setStarBalance] = useState(0);
+  const [missileStock, setMissileStock] = useState(3);
+  const [mineStock, setMineStock] = useState(3);
+  const [unlockedThemes, setUnlockedThemes] = useState<string[]>(['theme_classic']);
+  const [currentTheme, setCurrentTheme] = useState('theme_classic');
+  const [weaponCounts, setWeaponCounts] = useState({ missiles: 3, mines: 3 });
+  const [lastStarsEarned, setLastStarsEarned] = useState(0);
+  
+  const [showShop, setShowShop] = useState(false);
+  const [isWatchingAd, setIsWatchingAd] = useState(false);
+  
   const gameEngineRef = useRef<any>(null);
 
 
@@ -60,7 +85,12 @@ export default function App() {
     }
   }, [waitingToStart, paused]);
 
-  useEffect(() => { loadProgress(); }, []);
+  useEffect(() => {
+    mobileAds().initialize().then(() => {
+      console.log('AdMob Initialized');
+    });
+    loadProgress();
+  }, []);
 
   const loadProgress = async () => {
     try {
@@ -87,6 +117,22 @@ export default function App() {
       
       setUnlockedLevels(parsedLevels);
       if (savedScores) setHighScores(JSON.parse(savedScores));
+      
+      // Load economy
+      const savedEconomy = await AsyncStorage.getItem('@game_economy');
+      if (savedEconomy) {
+        const eco = JSON.parse(savedEconomy);
+        setStarBalance(eco.stars || 0);
+        setMissileStock(eco.missiles !== undefined ? eco.missiles : 3);
+        setMineStock(eco.mines !== undefined ? eco.mines : 3);
+        setUnlockedThemes(eco.themes || ['theme_classic']);
+        setCurrentTheme(eco.currentTheme || 'theme_classic');
+        setWeaponCounts({ 
+          missiles: eco.missiles !== undefined ? eco.missiles : 3, 
+          mines: eco.mines !== undefined ? eco.mines : 3 
+        });
+      }
+
       // Load sound preference
       const savedSound = await AsyncStorage.getItem('@sound_enabled');
       if (savedSound !== null) {
@@ -98,10 +144,13 @@ export default function App() {
 
   };
 
-  const saveProgress = async (levels: number[], scores: any) => {
+  const saveProgress = async (levels: number[], scores: any, economy?: any) => {
     try {
       await AsyncStorage.setItem('@unlocked_levels', JSON.stringify(levels));
       await AsyncStorage.setItem('@high_scores', JSON.stringify(scores));
+      if (economy) {
+        await AsyncStorage.setItem('@game_economy', JSON.stringify(economy));
+      }
     } catch (e) { console.log('Error saving progress', e); }
   };
 
@@ -127,7 +176,15 @@ export default function App() {
       case 'weapon-mode-change':
         setWeaponMode(e.mode); break;
       case 'weapon-counts':
-        setWeaponCounts({ missiles: e.missiles, mines: e.mines }); break;
+        setWeaponCounts({ missiles: e.missiles, mines: e.mines });
+        setMissileStock(e.missiles);
+        setMineStock(e.mines);
+        saveProgress(unlockedLevels, highScores, { 
+          stars: starBalance, 
+          missiles: e.missiles, 
+          mines: e.mines 
+        });
+        break;
     }
   };
 
@@ -141,14 +198,36 @@ export default function App() {
     ]).start();
   };
 
-  const handleWin = (finalScore: number) => {
+  const handleWin = (finalScore: number, timeTaken?: number) => {
     setRunning(false); setWin(true); setWaitingToStart(true);
     playSound('win'); triggerHaptic('notificationSuccess');
 
+    // ── Star Calculation ──
+    const level = FLAG_LEVELS[currentLevel];
+    const thresholds = level.starThresholds || [45, 90];
+    let stars = 1;
+    if (timeTaken) {
+      if (timeTaken < thresholds[0]) stars = 3;
+      else if (timeTaken < thresholds[1]) stars = 2;
+    }
+    setLastStarsEarned(stars);
+    const newStarBalance = starBalance + stars;
+    setStarBalance(newStarBalance);
+
     const currentScore = finalScore || 0;
-    const levelId = FLAG_LEVELS[currentLevel].id;
+    const levelId = level.id;
     const newScores = { ...highScores };
-    if (!newScores[levelId] || currentScore > newScores[levelId]) newScores[levelId] = currentScore;
+    
+    // Store score and stars in highScores
+    // We'll store it as a encoded string "score|stars" to keep it compatible with existing parse
+    const prevEntry = newScores[levelId] || 0;
+    const prevScore = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[0]) : prevEntry;
+    const prevStars = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[1]) : 0;
+    
+    if (currentScore > prevScore || stars > prevStars) {
+      newScores[levelId] = `${Math.max(currentScore, prevScore)}|${Math.max(stars, prevStars)}` as any;
+    }
+    
     setHighScores(newScores);
 
     let newUnlocked = [...unlockedLevels];
@@ -156,17 +235,28 @@ export default function App() {
       newUnlocked = [...unlockedLevels, currentLevel + 1];
       setUnlockedLevels(newUnlocked);
     }
-    saveProgress(newUnlocked, newScores);
+    
+    saveProgress(newUnlocked, newScores, { 
+      stars: newStarBalance, 
+      missiles: missileStock, 
+      mines: mineStock,
+      themes: unlockedThemes,
+      currentTheme,
+    });
   };
 
   const startLevel = (index: number) => {
     setCurrentLevel(index); setShowMenu(false); setRunning(true);
     setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
-    setWeaponCounts({ missiles: 3, mines: 2 }); setWeaponMode('NORMAL');
+    setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
 
     if (gameEngineRef.current) {
       const ents = getEntities(index);
       ents.scoreBoard.waitingToStart = true;
+      // Inject global weapons stock
+      ents.scoreBoard.missiles = missileStock;
+      ents.scoreBoard.mines = mineStock;
+      if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
       
       // Trigger Level Intro
@@ -192,11 +282,13 @@ export default function App() {
 
   const reset = () => {
     setGo(false); setWin(false); setRunning(true); setWaitingToStart(true);
-    setWeaponCounts({ missiles: 3, mines: 2 }); setWeaponMode('NORMAL');
+    setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
-
       const ents = getEntities(currentLevel);
       ents.scoreBoard.waitingToStart = true;
+      ents.scoreBoard.missiles = missileStock;
+      ents.scoreBoard.mines = mineStock;
+      if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
     }
   };
@@ -218,19 +310,96 @@ export default function App() {
     const newMode = weaponMode === mode ? 'NORMAL' : mode;
     if (newMode === 'AIM' && weaponCounts.missiles === 0) return;
     if (newMode === 'MINE' && weaponCounts.mines === 0) return;
-    setWeaponMode(newMode);
-    if (gameEngineRef.current) {
-      gameEngineRef.current.dispatch({ type: 'set-weapon-mode', mode: newMode });
-    }
     triggerHaptic('impactLight');
+  };
+
+  const handleBuy = (item: any) => {
+    if (item.type === 'AD') {
+      setIsWatchingAd(true);
+      
+      const unsubscribeLoaded = rewardedInterstitial.addAdEventListener(AdEventType.LOADED, () => {
+        rewardedInterstitial.show();
+      });
+
+      const unsubscribeEarned = rewardedInterstitial.addAdEventListener(
+        AdEventType.EARNED_REWARD,
+        reward => {
+          const newBalance = starBalance + 5;
+          setStarBalance(newBalance);
+          setIsWatchingAd(false);
+          saveProgress(unlockedLevels, highScores, { stars: newBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme });
+          triggerHaptic('notificationSuccess');
+          rewardedInterstitial.load();
+        },
+      );
+
+      const unsubscribeClosed = rewardedInterstitial.addAdEventListener(AdEventType.CLOSED, () => {
+        setIsWatchingAd(false);
+        rewardedInterstitial.load();
+      });
+
+      rewardedInterstitial.load();
+      return;
+    }
+
+    if (starBalance < item.cost) return;
+
+    const newBalance = starBalance - item.cost;
+    let newMissiles = missileStock;
+    let newMines = mineStock;
+    let newThemes = [...unlockedThemes];
+
+    if (item.id === 'missile_3') newMissiles += 3;
+    if (item.id === 'mine_2') newMines += 2;
+    if (item.type === 'THEME') {
+      newThemes.push(item.id);
+      setUnlockedThemes(newThemes);
+    }
+
+    setStarBalance(newBalance);
+    setMissileStock(newMissiles);
+    setMineStock(newMines);
+    setWeaponCounts({ missiles: newMissiles, mines: newMines });
+
+    saveProgress(unlockedLevels, highScores, { 
+      stars: newBalance, 
+      missiles: newMissiles, 
+      mines: newMines,
+      themes: newThemes,
+      currentTheme
+    });
+    triggerHaptic('notificationSuccess');
+    playSound('blip_select');
   };
 
 
   const renderDifficultyStars = (levelId: string) => {
-    const stars = LEVEL_DIFFICULTY[levelId] || 1;
+    const entry = highScores[levelId];
+    let stars = 0;
+    if (entry) {
+      if (typeof entry === 'string' && entry.includes('|')) {
+        stars = parseInt(entry.split('|')[1]);
+      } else {
+        // Fallback for old scores
+        stars = 1; 
+      }
+    }
+    
+    // If NOT won yet, show difficulty from static record
+    if (stars === 0) {
+      const diff = LEVEL_DIFFICULTY[levelId] || 1;
+      return (
+        <View style={styles.starsRow}>
+          {[1,2,3,4,5].map(i => (
+            <Text key={i} style={[styles.star, i <= diff && { color: 'rgba(255,255,255,0.2)' }]}>★</Text>
+          ))}
+        </View>
+      );
+    }
+
     return (
       <View style={styles.starsRow}>
-        {[1,2,3,4,5].map(i => (
+        {[1,2,3].map(i => (
           <Text key={i} style={[styles.star, i <= stars && styles.starActive]}>★</Text>
         ))}
       </View>
@@ -278,7 +447,16 @@ export default function App() {
                 </View>
               </TouchableOpacity>
 
-              {/* Level name in-game HUD */}
+              {/* Fixed Banner Ad during Gameplay */}
+              <View style={styles.gameBannerContainer}>
+                <BannerAd
+                  unitId={BANNER_AD_ID}
+                  size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                  requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+                />
+              </View>
+
+              {/* Level name in-game HUD — Moved up to stay clear of the ad */}
               <View style={styles.hudLevelName} pointerEvents="none">
                 <Text style={styles.hudLevelText}>{FLAG_LEVELS[currentLevel]?.name?.toUpperCase()}</Text>
               </View>
@@ -327,6 +505,7 @@ export default function App() {
                   weaponMode={weaponMode}
                   onMissilePress={() => toggleWeaponMode('AIM')}
                   onMinePress={() => toggleWeaponMode('MINE')}
+                  onShopPress={() => setShowShop(true)}
                 />
               )}
 
@@ -342,6 +521,9 @@ export default function App() {
                       </TouchableOpacity>
                       <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart]}>
                         <Text style={styles.overlayBtnText}>↺  RESTART</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => { setShowShop(true); setPaused(false); }} style={[styles.overlayBtn, styles.btnNext]}>
+                        <Text style={[styles.overlayBtnText, { color: '#000' }]}>🛒  GO TO SHOP</Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit]}>
                         <Text style={styles.overlayBtnText}>✕  EXIT</Text>
@@ -372,6 +554,9 @@ export default function App() {
                 <Text style={styles.soundToggleText}>
                   {soundEnabled ? '🔊  SOUND ON' : '🔇  SOUND OFF'}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowShop(true)} style={[styles.soundToggleBtn, { top: 70, backgroundColor: '#FFEE58' }]}>
+                <Text style={[styles.soundToggleText, { color: '#000' }]}>🛒  GET MORE WEAPONS</Text>
               </TouchableOpacity>
             </View>
 
@@ -410,15 +595,24 @@ export default function App() {
                       <View style={styles.levelInfo}>
                         <Text style={styles.levelName}>{lvl.name}</Text>
                         {renderDifficultyStars(lvl.id)}
-                        {isUnlocked && best > 0 && (
-                          <Text style={styles.bestScore}>⭐ {best.toLocaleString()}</Text>
-                        )}
+                        {isUnlocked && best > 0 && (() => {
+                          const s = typeof best === 'string' ? best.split('|')[0] : best;
+                          return <Text style={styles.bestScore}>⭐ {parseInt(s).toLocaleString()}</Text>;
+                        })()}
                       </View>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </ScrollView>
+
+            <View style={{ alignItems: 'center', marginVertical: 10 }}>
+              <BannerAd
+                unitId={BANNER_AD_ID}
+                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+              />
+            </View>
 
             <TouchableOpacity onPress={resetProgress} style={styles.resetButton}>
               <Text style={styles.resetText}>RESET PROGRESS</Text>
@@ -434,6 +628,23 @@ export default function App() {
               <Text style={[styles.resultTitle, win && { color: '#FFD54F' }]}>
                 {go ? 'GAME OVER' : 'LEVEL CLEAR!'}
               </Text>
+              
+              {win && (
+                <View style={styles.winDetails}>
+                  <View style={styles.resultStarsRow}>
+                    {[1, 2, 3].map(i => (
+                      <Text key={i} style={[styles.resultStar, i <= lastStarsEarned && styles.resultStarActive]}>
+                        ★
+                      </Text>
+                    ))}
+                  </View>
+                  <Text style={styles.resultStarSub}>+{lastStarsEarned} STARS EARNED</Text>
+                  <View style={styles.resultEconomy}>
+                    <Text style={styles.resultEcoText}>TOTAL ⭐ {starBalance}</Text>
+                  </View>
+                </View>
+              )}
+
               {win && <Text style={styles.resultLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>}
               <View style={styles.resultButtons}>
                 <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnRestart]}>
@@ -451,6 +662,27 @@ export default function App() {
                   </TouchableOpacity>
                 )}
               </View>
+            </View>
+          </View>
+        )}
+
+        {/* Shop Overlay */}
+        {showShop && (
+          <ShopOverlay
+            starBalance={starBalance}
+            unlockedThemes={unlockedThemes}
+            onClose={() => setShowShop(false)}
+            onBuy={handleBuy}
+          />
+        )}
+
+        {/* Ad Loading Overlay */}
+        {isWatchingAd && (
+          <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.95)' }]}>
+            <View style={styles.resultCard}>
+              <Text style={styles.resultEmoji}>📺</Text>
+              <Text style={styles.resultTitle}>LOADING AD...</Text>
+              <Text style={styles.resultLevel}>Wait for Reward</Text>
             </View>
           </View>
         )}
@@ -490,10 +722,18 @@ const styles = StyleSheet.create({
   // ── In-Game HUD ────────────────────────────
   hudLevelName: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 95, // Raised up to avoid overlapping Banner Ad
     left: 0, right: 0,
     alignItems: 'center',
     zIndex: 5,
+  },
+  gameBannerContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0, right: 0,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 4,
   },
   hudLevelText: {
     color: 'rgba(255,255,255,0.4)',
@@ -640,6 +880,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 20,
+    marginTop: 5,
+  },
+  winDetails: {
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  resultStarsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 5,
+  },
+  resultStar: {
+    fontSize: 42,
+    color: 'rgba(0,0,0,0.1)',
+  },
+  resultStarActive: {
+    color: '#000',
+  },
+  resultStarSub: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  resultEconomy: {
+    marginTop: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  resultEcoText: {
+    color: 'rgba(0,0,0,0.6)',
+    fontSize: 12,
+    fontWeight: '800',
   },
   resultButtons: {
     width: '100%',

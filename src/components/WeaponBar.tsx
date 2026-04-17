@@ -9,6 +9,7 @@ interface WeaponBarProps {
   weaponMode: 'NORMAL' | 'AIM' | 'MINE';
   onMissilePress: () => void;
   onMinePress: () => void;
+  onShopPress: () => void;
 }
 
 const WeaponBar: React.FC<WeaponBarProps> = ({
@@ -17,11 +18,12 @@ const WeaponBar: React.FC<WeaponBarProps> = ({
   weaponMode,
   onMissilePress,
   onMinePress,
+  onShopPress,
 }) => {
   const isMissileActive = weaponMode === 'AIM';
   const isMineActive = weaponMode === 'MINE';
-  const missileDisabled = missiles === 0 && !isMissileActive;
-  const mineDisabled = mines === 0 && !isMineActive;
+  const isMissileEmpty = missiles === 0;
+  const isMineEmpty = mines === 0;
 
   return (
     <View style={styles.container} pointerEvents="box-none">
@@ -31,16 +33,15 @@ const WeaponBar: React.FC<WeaponBarProps> = ({
         style={[
           styles.btn,
           isMissileActive && styles.btnActive,
-          missileDisabled && styles.btnEmpty,
+          isMissileEmpty && !isMissileActive && styles.btnEmpty,
         ]}
-        onPress={onMissilePress}
+        onPress={isMissileEmpty ? onShopPress : onMissilePress}
         activeOpacity={0.75}
-        disabled={missileDisabled}
       >
         <Text style={styles.icon}>🚀</Text>
-        <View style={[styles.badge, missiles === 0 && styles.badgeEmpty]}>
-          <Text style={[styles.badgeText, missiles === 0 && styles.badgeTextEmpty]}>
-            {missiles}
+        <View style={[styles.badge, isMissileEmpty && styles.badgeEmpty]}>
+          <Text style={[styles.badgeText, isMissileEmpty && styles.badgeTextEmpty]}>
+            {isMissileEmpty ? 'SHOP' : missiles}
           </Text>
         </View>
       </TouchableOpacity>
@@ -51,16 +52,15 @@ const WeaponBar: React.FC<WeaponBarProps> = ({
         style={[
           styles.btn,
           isMineActive && styles.btnActive,
-          mineDisabled && styles.btnEmpty,
+          isMineEmpty && !isMineActive && styles.btnEmpty,
         ]}
-        onPress={onMinePress}
+        onPress={isMineEmpty ? onShopPress : onMinePress}
         activeOpacity={0.75}
-        disabled={mineDisabled}
       >
         <Text style={styles.icon}>💣</Text>
-        <View style={[styles.badge, mines === 0 && styles.badgeEmpty]}>
-          <Text style={[styles.badgeText, mines === 0 && styles.badgeTextEmpty]}>
-            {mines}
+        <View style={[styles.badge, isMineEmpty && styles.badgeEmpty]}>
+          <Text style={[styles.badgeText, isMineEmpty && styles.badgeTextEmpty]}>
+            {isMineEmpty ? 'SHOP' : mines}
           </Text>
         </View>
       </TouchableOpacity>

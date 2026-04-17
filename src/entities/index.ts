@@ -53,11 +53,14 @@ export const getEntities = (levelIndex = 0) => {
       bricksBroken: 0,
       maxSpeed: 22,
       trapRelocations: 0,
+      startTime: Date.now(),
+      starThresholds: level.starThresholds ?? [45, 90], // Default thresholds
       renderer: ScoreBoard,
     },
     paddle: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.85],
       size: [PADDLE_WIDTH * paddleMultiplier, PADDLE_HEIGHT],
+      themeId: 'theme_classic',
       renderer: Paddle,
     },
     ball_0: {
@@ -93,7 +96,7 @@ export const getEntities = (levelIndex = 0) => {
       entities[brickId] = {
         position: [
           2 + c * brickWidth + brickWidth / 2, // Only 2px left margin
-          80 + r * brickHeight + brickHeight / 2,
+          110 + r * brickHeight + brickHeight / 2,
         ],
         size: [brickWidth - 0.5, brickHeight - 0.5], // Tighter gaps
         color: (isBorder && patternResult === 'background') ? '#78909C' : brickColor,

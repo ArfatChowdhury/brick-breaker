@@ -1,4 +1,8 @@
 {
   "name": "BrickBreakerGame",
-  "displayName": "BrickBreakerGame"
+  "displayName": "BrickBreakerGame",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3315420037530922~6421147732",
+    "ios_app_id": "ca-app-pub-3315420037530922~6421147732"
+  }
 }

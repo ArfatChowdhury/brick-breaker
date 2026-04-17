@@ -200,11 +200,14 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   }
 
   if (scoreBoard.trapActive) {
+    if (scoreBoard.trapTimer === undefined) scoreBoard.trapTimer = 300; // Safety init
     scoreBoard.trapTimer -= 1;
     if (scoreBoard.trapTimer <= 0) {
       // Remove isTrap from current brick
-      const currentBrick = entities[scoreBoard.trapId];
-      if (currentBrick) delete currentBrick.isTrap;
+      const currentBrickId = scoreBoard.trapId;
+      if (currentBrickId && entities[currentBrickId]) {
+        delete entities[currentBrickId].isTrap;
+      }
       scoreBoard.trapRelocations = (scoreBoard.trapRelocations || 0) + 1;
 
       if (scoreBoard.trapRelocations >= 3) {
@@ -486,7 +489,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   });
 
   if (clearableBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
-    dispatch({ type: 'win', score: scoreBoard.score });
+    const timeTaken = Math.floor((Date.now() - scoreBoard.startTime) / 1000);
+    dispatch({ type: 'win', score: scoreBoard.score, timeTaken });
     playSound('victory');
     // Safety check: Filter out any ball keys that might have been deleted this frame
     activeBallKeys.forEach(k => {
@@ -636,7 +640,7 @@ const explodeMine = (entities: any, mineKey: string, position: [number, number],
     const b = entities[key];
     if (!b.status) return;
     const dist = Math.sqrt(Math.pow(b.position[0] - position[0], 2) + Math.pow(b.position[1] - position[1], 2));
-    if (dist < 100) {
+    if (dist < 160) { // Increased radius (100 -> 160) to hit ~3-5 bricks
       b.status = false;
       entities.scoreBoard.score += 30;
       entities.scoreBoard._bricksDirty = true;
