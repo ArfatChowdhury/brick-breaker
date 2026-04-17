@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Cuba: LevelConfig = {
+  flagColors: ['#002A8F', '#FFFFFF', '#CC0001'],
+  flagOrientation: 'h',
   name: 'Cuba Caribbean Chevron',
   id: 'CU_ELITE_V1',
   backgroundColor: '#FFFFFF',

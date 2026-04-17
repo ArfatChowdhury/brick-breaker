@@ -9,10 +9,14 @@ import MovePaddle from './src/systems/MovePaddle';
 import Physics from './src/systems/Physics';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FLAG_LEVELS } from './src/levels';
-import { playSound } from './src/utils/audio';
+import { playSound, setSoundEnabled } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
 import WeaponSystem from './src/systems/WeaponSystem';
+import WeaponBar from './src/components/WeaponBar';
+import FlagMiniPreview from './src/components/FlagMiniPreview';
+
+
 
 // Difficulty stars for each level (1-5)
 const LEVEL_DIFFICULTY: Record<string, number> = {
@@ -32,7 +36,10 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [waitingToStart, setWaitingToStart] = useState(true);
   const [weaponMode, setWeaponMode] = useState<'NORMAL' | 'AIM' | 'MINE'>('NORMAL');
+  const [soundEnabled, setSoundEnabledState] = useState(true);
+  const [weaponCounts, setWeaponCounts] = useState({ missiles: 3, mines: 2 });
   const gameEngineRef = useRef<any>(null);
+
 
   // Visual Polish Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -80,7 +87,15 @@ export default function App() {
       
       setUnlockedLevels(parsedLevels);
       if (savedScores) setHighScores(JSON.parse(savedScores));
+      // Load sound preference
+      const savedSound = await AsyncStorage.getItem('@sound_enabled');
+      if (savedSound !== null) {
+        const enabled = JSON.parse(savedSound);
+        setSoundEnabledState(enabled);
+        setSoundEnabled(enabled);
+      }
     } catch (e) { console.log('Error loading progress', e); }
+
   };
 
   const saveProgress = async (levels: number[], scores: any) => {
@@ -102,26 +117,20 @@ export default function App() {
   const onEvent = (e: any) => {
     switch (e.type) {
       case 'game-over':
-        setRunning(false); setGo(true); playSound('lose'); break;
+        setRunning(false); setGo(true); break;
       case 'win':
         handleWin(e.score); break;
-      case 'paddle-hit': playSound('hit'); break;
-      case 'brick-hit':  playSound('hit'); break;
-      case 'brick-break': playSound('break'); break;
-      case 'wall-hit':  playSound('wall'); break;
-      case 'powerup-collect': playSound('powerup'); break;
       case 'lose-life':
-        playSound('lose');
-        setWaitingToStart(true);
-        break;
+        setWaitingToStart(true); break;
       case 'shake':
-        triggerShake(e.intensity);
-        break;
+        triggerShake(e.intensity); break;
       case 'weapon-mode-change':
-        setWeaponMode(e.mode);
-        break;
+        setWeaponMode(e.mode); break;
+      case 'weapon-counts':
+        setWeaponCounts({ missiles: e.missiles, mines: e.mines }); break;
     }
   };
+
 
   const triggerShake = (intensity: number) => {
     const val = intensity * 0.8;
@@ -153,6 +162,8 @@ export default function App() {
   const startLevel = (index: number) => {
     setCurrentLevel(index); setShowMenu(false); setRunning(true);
     setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
+    setWeaponCounts({ missiles: 3, mines: 2 }); setWeaponMode('NORMAL');
+
     if (gameEngineRef.current) {
       const ents = getEntities(index);
       ents.scoreBoard.waitingToStart = true;
@@ -181,7 +192,9 @@ export default function App() {
 
   const reset = () => {
     setGo(false); setWin(false); setRunning(true); setWaitingToStart(true);
+    setWeaponCounts({ missiles: 3, mines: 2 }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
+
       const ents = getEntities(currentLevel);
       ents.scoreBoard.waitingToStart = true;
       gameEngineRef.current.swap(ents);
@@ -191,6 +204,27 @@ export default function App() {
   const backToMenu = () => {
     setShowMenu(true); setRunning(false); setWin(false); setGo(false); setPaused(false);
   };
+
+  const toggleSound = () => {
+    const newVal = !soundEnabled;
+    setSoundEnabledState(newVal);
+    setSoundEnabled(newVal);
+    AsyncStorage.setItem('@sound_enabled', JSON.stringify(newVal));
+    if (newVal) playSound('blip_select');
+    triggerHaptic('impactLight');
+  };
+
+  const toggleWeaponMode = (mode: 'AIM' | 'MINE') => {
+    const newMode = weaponMode === mode ? 'NORMAL' : mode;
+    if (newMode === 'AIM' && weaponCounts.missiles === 0) return;
+    if (newMode === 'MINE' && weaponCounts.mines === 0) return;
+    setWeaponMode(newMode);
+    if (gameEngineRef.current) {
+      gameEngineRef.current.dispatch({ type: 'set-weapon-mode', mode: newMode });
+    }
+    triggerHaptic('impactLight');
+  };
+
 
   const renderDifficultyStars = (levelId: string) => {
     const stars = LEVEL_DIFFICULTY[levelId] || 1;
@@ -285,6 +319,17 @@ export default function App() {
                 </View>
               )}
 
+              {/* Weapon Bar — Stable React TouchableOpacity buttons (replaces fragile WeaponSystem UI hacks) */}
+              {!paused && (
+                <WeaponBar
+                  missiles={weaponCounts.missiles}
+                  mines={weaponCounts.mines}
+                  weaponMode={weaponMode}
+                  onMissilePress={() => toggleWeaponMode('AIM')}
+                  onMinePress={() => toggleWeaponMode('MINE')}
+                />
+              )}
+
               {/* Pause Overlay */}
               {paused && (
                 <View style={styles.overlay}>
@@ -301,10 +346,14 @@ export default function App() {
                       <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit]}>
                         <Text style={styles.overlayBtnText}>✕  EXIT</Text>
                       </TouchableOpacity>
+                      <TouchableOpacity id="sound-toggle-pause" onPress={toggleSound} style={[styles.overlayBtn, styles.btnSound]}>
+                        <Text style={styles.overlayBtnText}>{soundEnabled ? '🔊  SOUND ON' : '🔇  SOUND OFF'}</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 </View>
               )}
+
             </>
           )}
         </Animated.View>
@@ -319,7 +368,13 @@ export default function App() {
               </View>
               <Text style={styles.gameLogo}>BRICKSTRIKE</Text>
               <Text style={styles.gameTagline}>W O R L D  T O U R</Text>
+              <TouchableOpacity id="sound-toggle-menu" onPress={toggleSound} style={styles.soundToggleBtn}>
+                <Text style={styles.soundToggleText}>
+                  {soundEnabled ? '🔊  SOUND ON' : '🔇  SOUND OFF'}
+                </Text>
+              </TouchableOpacity>
             </View>
+
 
             {/* Level Grid */}
             <ScrollView
@@ -339,13 +394,19 @@ export default function App() {
                       style={[styles.levelCard, !isUnlocked && styles.levelCardLocked]}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.flagPreview, { backgroundColor: lvl.backgroundColor }]}>
+                      <View style={styles.flagPreview}>
+                        <FlagMiniPreview
+                          flagColors={lvl.flagColors}
+                          flagOrientation={lvl.flagOrientation}
+                          fallbackColor={lvl.backgroundColor}
+                        />
                         {!isUnlocked && (
                           <View style={styles.lockOverlay}>
                             <Text style={styles.lockIcon}>🔒</Text>
                           </View>
                         )}
                       </View>
+
                       <View style={styles.levelInfo}>
                         <Text style={styles.levelName}>{lvl.name}</Text>
                         {renderDifficultyStars(lvl.id)}
@@ -751,5 +812,25 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 4, height: 4 },
     textShadowRadius: 8,
     textAlign: 'center',
+  },
+  // Sound toggle styles
+  soundToggleBtn: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  soundToggleText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  btnSound: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
 });

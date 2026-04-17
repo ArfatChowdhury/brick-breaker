@@ -56,7 +56,7 @@ const Paddle: React.FC<PaddleProps> = ({
     width: width,
     height: height,
     backgroundColor: isFire ? '#FF5252' : color,
-    borderRadius: height / 2,
+    borderRadius: 8,
     borderWidth: 3,
     borderColor: '#000000',
     shadowColor: isFire ? '#FF5252' : '#000',

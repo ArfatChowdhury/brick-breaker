@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const SouthKorea: LevelConfig = {
+  flagColors: ['#FFFFFF', '#CD2E3A', '#003478'],
+  flagOrientation: 'h',
   name: 'South Korea Taeguk Elite',
   id: 'KR_ELITE_V1',
   backgroundColor: '#FFFFFF',

@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Bangladesh: LevelConfig = {
+  flagColors: ['#006A4E', '#F42A41'],
+  flagOrientation: 'h',
   name: 'Bangladesh Elite',
   id: 'BD_MAZE_V2',
   backgroundColor: '#006A4E',

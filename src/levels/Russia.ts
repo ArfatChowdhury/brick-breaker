@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Russia: LevelConfig = {
+  flagColors: ['#FFFFFF', '#0032A0', '#DA291C'],
+  flagOrientation: 'h',
   name: 'Russia Siberian Bastion',
   id: 'RU_ELITE_V1',
   backgroundColor: '#FFFFFF',

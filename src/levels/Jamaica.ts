@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Jamaica: LevelConfig = {
+  flagColors: ['#FED100', '#000000', '#007A5E'],
+  flagOrientation: 'h',
   name: 'Jamaica Caribbean Cove',
   id: 'JM_ELITE_V1',
   backgroundColor: '#000000',

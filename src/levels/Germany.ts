@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Germany: LevelConfig = {
+  flagColors: ['#000000', '#DD0000', '#FFCE00'],
+  flagOrientation: 'h',
   name: 'Germany Bastion Elite',
   id: 'DE_ELITE_V1',
   backgroundColor: '#FFCE00',

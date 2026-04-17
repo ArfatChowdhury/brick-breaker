@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const France: LevelConfig = {
+  flagColors: ['#0055A4', '#FFFFFF', '#EF4135'],
+  flagOrientation: 'v',
   name: 'France Tri-Colore Elite',
   id: 'FR_ELITE_V1',
   backgroundColor: '#FFFFFF',

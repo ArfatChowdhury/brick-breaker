@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const WorldTourFinale: LevelConfig = {
+  flagColors: ['#D4AF37', '#000000', '#ED1C24'],
+  flagOrientation: 'h',
   name: 'World Tour Finale: The Grand Core',
   id: 'WT_FINALE_V1',
   backgroundColor: '#000000', // Pitch Black

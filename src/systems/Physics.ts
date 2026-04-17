@@ -181,31 +181,51 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   if (paddle.recoil > 0) paddle.recoil *= 0.8;
   if (paddle.recoil < 0.1) paddle.recoil = 0;
   
-  // 0c. Environmental Trap Mine System
+  // 0c. Environmental Trap Mine System (Relocating every 5–10 seconds)
   const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
   const bottomBricks = allBrickKeys.filter(k => {
     const b = entities[k];
-    return b.status && b.position[1] > SCREEN_HEIGHT * 0.65;
+    // Target lower half of screen, preferring stone bricks
+    return b.status && b.position[1] > SCREEN_HEIGHT * 0.55;
   });
-  
-  if (bottomBricks.length > 0 && !scoreBoard.trapActive && (scoreBoard.trapAttempts || 0) < 4) {
-    // Spawn a new trap mine
+
+  // Activate a new trap if none is active and we have relocations remaining
+  if (bottomBricks.length > 0 && !scoreBoard.trapActive && (scoreBoard.trapRelocations || 0) < 3) {
     const randomKey = bottomBricks[Math.floor(Math.random() * bottomBricks.length)];
-    const brick = entities[randomKey];
-    brick.isTrap = true;
+    entities[randomKey].isTrap = true;
     scoreBoard.trapActive = true;
     scoreBoard.trapId = randomKey;
-    scoreBoard.trapTimer = 15 * 60; // 15 seconds at 60fps
-    scoreBoard.trapAttempts = (scoreBoard.trapAttempts || 0) + 1;
+    // Random 5–10 second timer (300–600 frames at 60fps)
+    scoreBoard.trapTimer = Math.floor(Math.random() * 300 + 300);
   }
-  
+
   if (scoreBoard.trapActive) {
     scoreBoard.trapTimer -= 1;
     if (scoreBoard.trapTimer <= 0) {
-      // Teleport
+      // Remove isTrap from current brick
       const currentBrick = entities[scoreBoard.trapId];
       if (currentBrick) delete currentBrick.isTrap;
-      scoreBoard.trapActive = false;
+      scoreBoard.trapRelocations = (scoreBoard.trapRelocations || 0) + 1;
+
+      if (scoreBoard.trapRelocations >= 3) {
+        // Permanently deactivated after 3 relocations
+        scoreBoard.trapActive = false;
+      } else {
+        // Relocate to a different random bottom brick
+        const newBottomBricks = Object.keys(entities).filter(k => {
+          const b = entities[k];
+          return (k.startsWith('brick_') || k.startsWith('maze_brick_')) &&
+            b.status && !b.isTrap && b.position[1] > SCREEN_HEIGHT * 0.55;
+        });
+        if (newBottomBricks.length > 0) {
+          const newKey = newBottomBricks[Math.floor(Math.random() * newBottomBricks.length)];
+          entities[newKey].isTrap = true;
+          scoreBoard.trapId = newKey;
+          scoreBoard.trapTimer = Math.floor(Math.random() * 300 + 300);
+        } else {
+          scoreBoard.trapActive = false;
+        }
+      }
     }
   }
 
@@ -299,16 +319,19 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       const pLeft = pX - pW / 2;
       const pRight = pX + pW / 2;
 
-      // 4a. Side Paddle Collision (Detects hitting the vertical edges)
+      // 4a. Side Paddle Collision — ball always reflects upward on side hit
       if (ball.position[1] + ball.radius > pTop && ball.position[1] - ball.radius < pBottom) {
         if (ball.velocity[0] > 0 && ball.position[0] + ball.radius >= pLeft && ball.position[0] < pLeft) {
           ball.position[0] = pLeft - ball.radius - 1;
           ball.velocity[0] = -Math.abs(ball.velocity[0]);
+          ball.velocity[1] = -Math.abs(ball.velocity[1]); // Always push upward — prevents "slides down the side" bug
           triggerHaptic('impactMedium');
           dispatch({ type: 'paddle-hit' });
+          playSound('tink');
         } else if (ball.velocity[0] < 0 && ball.position[0] - ball.radius <= pRight && ball.position[0] > pRight) {
           ball.position[0] = pRight + ball.radius + 1;
           ball.velocity[0] = Math.abs(ball.velocity[0]);
+          ball.velocity[1] = -Math.abs(ball.velocity[1]); // Always push upward
           triggerHaptic('impactMedium');
           dispatch({ type: 'paddle-hit' });
           playSound('tink');
@@ -371,45 +394,67 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           if (hitSide === 'TOP' && ball.velocity[1] <= 0) continue;
           if (hitSide === 'BOTTOM' && ball.velocity[1] >= 0) continue;
 
-          // Displace ball
-          const nudge = 1.6; 
+          // Fireball mode: bigger nudge pushes ball cleanly through bricks
+          const isFireMode = !!scoreBoard.powerUpState.FIRE;
+          const nudge = isFireMode ? 6 : 1.6;
           if (hitSide === 'LEFT')   ball.position[0] = bX - bW / 2 - ball.radius - nudge;
           else if (hitSide === 'RIGHT')  ball.position[0] = bX + bW / 2 + ball.radius + nudge;
           else if (hitSide === 'TOP')    ball.position[1] = bY - bH / 2 - ball.radius - nudge;
           else if (hitSide === 'BOTTOM') ball.position[1] = bY + bH / 2 + ball.radius + nudge;
 
-          if (!scoreBoard.powerUpState.FIRE) {
+          // Normal mode: reflect velocity; Fire mode: don't reflect (ball passes through)
+          if (!isFireMode) {
             if (overlapX < overlapY) ball.velocity[0] *= -1;
             else ball.velocity[1] *= -1;
           }
 
-          if (Math.abs(ball.velocity[1]) < MIN_VY) {
+          if (!isFireMode && Math.abs(ball.velocity[1]) < MIN_VY) {
             ball.velocity[1] = ball.velocity[1] < 0 ? -MIN_VY : MIN_VY;
           }
 
-          brick.hp -= (hitSide === 'TOP' ? 3 : 1);
+          // Fire mode kills bricks instantly (3 damage); normal uses positional damage
+          brick.hp -= isFireMode ? 3 : (hitSide === 'TOP' ? 3 : 1);
           triggerHaptic('impactLight');
-          
+
           if (brick.hp <= 0 || brick.hasMine || brick.isTrap) {
             const isMineHit = brick.hasMine;
             const isTrapHit = brick.isTrap;
             brick.status = false;
-            
+
             scoreBoard.streak += 1;
             scoreBoard.multiplier = 1 + Math.floor(scoreBoard.streak / 6);
-            
+
             if (isTrapHit) {
               scoreBoard.score += 1000; // Big Bonus!
               scoreBoard.trapActive = false;
+              scoreBoard.trapRelocations = 3; // Stop re-spawning after player destroys it
               scoreBoard.shake += 25;
               spawnBlastWave(entities, brick.position);
             } else {
               scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * scoreBoard.multiplier;
             }
-            
+
             scoreBoard._bricksDirty = true;
             triggerHaptic('impactHeavy');
-            
+
+            // ── Progressive Speed Boost ──
+            // Every 8 regular bricks broken, increase all active ball speeds by 6%
+            if (!isMineHit && !isTrapHit && brick.type === 'regular') {
+              scoreBoard.bricksBroken = (scoreBoard.bricksBroken || 0) + 1;
+              if (scoreBoard.bricksBroken % 8 === 0) {
+                const maxSpd = scoreBoard.maxSpeed || 22;
+                activeBallKeys.forEach(bk => {
+                  const b = entities[bk];
+                  if (!b) return;
+                  const spd = Math.sqrt(b.velocity[0] ** 2 + b.velocity[1] ** 2);
+                  if (spd < maxSpd) {
+                    b.velocity[0] *= 1.06;
+                    b.velocity[1] *= 1.06;
+                  }
+                });
+              }
+            }
+
             if (isMineHit) {
               explodeMine(entities, brick.position, bKey, dispatch);
             } else {
@@ -422,8 +467,12 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
             dispatch({ type: 'brick-hit' });
             playSound('hit_hurt');
           }
-          collidedThisStep = true;
-          break; // One brick hit per sub-step
+
+          // Fire mode: ball passes through bricks — don't stop sub-step
+          if (!isFireMode) {
+            collidedThisStep = true;
+            break; // One brick hit per sub-step
+          }
         }
       }
       if (collidedThisStep) break; // If we hit something, wait for the next frame

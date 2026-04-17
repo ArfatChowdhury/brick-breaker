@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const DiamondCore: LevelConfig = {
+  flagColors: ['#1A237E', '#FFD700', '#FFFFFF'],
+  flagOrientation: 'h',
   name: 'Diamond Core',
   id: 'DIAMOND_CORE',
   backgroundColor: '#1A237E',

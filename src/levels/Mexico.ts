@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Mexico: LevelConfig = {
+  flagColors: ['#006847', '#FFFFFF', '#CE1126'],
+  flagOrientation: 'v',
   name: 'Mexico Tenochtitlan Bastion',
   id: 'MX_ELITE_V1',
   backgroundColor: '#FFFFFF',

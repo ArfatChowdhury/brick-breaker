@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Japan: LevelConfig = {
+  flagColors: ['#FFFFFF', '#BC002D'],
+  flagOrientation: 'h',
   name: 'Japan Zen Elite',
   id: 'JP_ELITE_V1',
   backgroundColor: '#FFFFFF',

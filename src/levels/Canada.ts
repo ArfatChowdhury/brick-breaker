@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Canada: LevelConfig = {
+  flagColors: ['#FF0000', '#FFFFFF', '#FF0000'],
+  flagOrientation: 'v',
   name: 'Canada Maple Fortress',
   id: 'CA_ELITE_V1',
   backgroundColor: '#FFFFFF',

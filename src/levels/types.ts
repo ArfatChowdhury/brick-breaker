@@ -5,6 +5,9 @@ export interface LevelConfig {
   circleColor?: string;
   circleOffset?: { r: number; c: number };
   pattern: (r: number, c: number, rows: number, cols: number) => string;
+  // Flag preview (shown in level select)
+  flagColors?: string[];         // Main flag colors left→right or top→bottom
+  flagOrientation?: 'h' | 'v';  // h = horizontal bands, v = vertical bands
   // Future extensibility
   initialBallSpeed?: number;
   paddleSizeMultiplier?: number;

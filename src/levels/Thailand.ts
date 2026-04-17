@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Thailand: LevelConfig = {
+  flagColors: ['#A51931', '#FFFFFF', '#2D2A4A', '#FFFFFF', '#A51931'],
+  flagOrientation: 'h',
   name: 'Thailand Pagoda Gate',
   id: 'TH_ELITE_V1',
   backgroundColor: '#FFFFFF',

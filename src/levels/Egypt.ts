@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Egypt: LevelConfig = {
+  flagColors: ['#CE1126', '#FFFFFF', '#000000'],
+  flagOrientation: 'h',
   name: 'Egypt Pyramid Core',
   id: 'EG_ELITE_V1',
   backgroundColor: '#FFFFFF',

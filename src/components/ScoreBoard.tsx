@@ -1,231 +1,206 @@
 import React from 'react';
-import { StyleSheet, View, Text, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 
 interface ScoreBoardProps {
   score: number;
   lives: number;
-  missiles: number;
-  mines: number;
+  missiles?: number;
+  mines?: number;
   weaponMode?: 'NORMAL' | 'AIM' | 'MINE';
   powerUpState?: Record<string, number>;
   multiplier?: number;
 }
 
-const ScoreBoard: React.FC<ScoreBoardProps> = ({ score, lives, missiles, mines, weaponMode, powerUpState, multiplier = 1 }) => {
+const ScoreBoard: React.FC<ScoreBoardProps> = ({
+  score,
+  lives,
+  powerUpState,
+  multiplier = 1,
+}) => {
   const currentTime = Date.now();
-  
-  // Calculate remaining progress for power-ups (0.0 to 1.0)
+
   const getPowerUpProgress = (expiry?: number) => {
     if (!expiry) return 0;
-    const duration = 15000; // Assuming 15s avg
+    const duration = 15000;
     const remaining = expiry - currentTime;
     return Math.max(0, Math.min(1, remaining / duration));
   };
 
   const fireProgress = getPowerUpProgress(powerUpState?.FIRE);
   const wideProgress = getPowerUpProgress(powerUpState?.WIDE);
+  const hasPowerUps = fireProgress > 0 || wideProgress > 0;
 
   return (
-    <View style={styles.outerContainer}>
-      <View style={styles.container}>
-        {/* Left Side: Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.label}>SCORE</Text>
-            <View style={styles.scoreRow}>
-              <Text style={styles.value}>{score.toLocaleString()}</Text>
-              {multiplier > 1 && (
-                <View style={styles.multiplierBadge}>
-                  <Text style={styles.multiplierText}>{multiplier}X</Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.label}>LIVES</Text>
-            <Text style={styles.value}>{'❤️'.repeat(lives)}</Text>
+    <View style={styles.hud} pointerEvents="none">
+      {/* Main HUD Pill */}
+      <View style={styles.hudPill}>
+        {/* Score Section */}
+        <View style={styles.scoreSection}>
+          <Text style={styles.hudLabel}>SCORE</Text>
+          <View style={styles.scoreRow}>
+            <Text style={styles.scoreValue}>{score.toLocaleString()}</Text>
+            {multiplier > 1 && (
+              <View style={styles.multiBadge}>
+                <Text style={styles.multiText}>{multiplier}×</Text>
+              </View>
+            )}
           </View>
         </View>
 
-      </View>
+        {/* Divider */}
+        <View style={styles.divider} />
 
-      {/* Vertical Weapon Bar - Right Side */}
-      <View style={styles.weaponBarVertical}>
-        <View style={[
-          styles.weaponBtn, 
-          weaponMode === 'AIM' && styles.weaponActive,
-          missiles === 0 && styles.weaponEmpty
-        ]}>
-          <Text style={styles.weaponIcon}>🚀</Text>
-          <View style={styles.badgeContainer}>
-            <Text style={[styles.weaponCount, missiles === 0 && styles.weaponCountEmpty]}>{missiles}</Text>
-          </View>
-        </View>
-        <View style={[
-          styles.weaponBtn, 
-          weaponMode === 'MINE' && styles.weaponActive,
-          mines === 0 && styles.weaponEmpty
-        ]}>
-          <Text style={styles.weaponIcon}>💣</Text>
-          <View style={styles.badgeContainer}>
-            <Text style={[styles.weaponCount, mines === 0 && styles.weaponCountEmpty]}>{mines}</Text>
+        {/* Lives Section */}
+        <View style={styles.livesSection}>
+          <Text style={styles.hudLabel}>LIVES</Text>
+          <View style={styles.heartsRow}>
+            {[0, 1, 2].map((i) => (
+              <Text
+                key={i}
+                style={[styles.heart, i >= lives && styles.heartDead]}
+              >
+                ♥
+              </Text>
+            ))}
           </View>
         </View>
       </View>
 
       {/* Power-up Progress Bars */}
-      <View style={styles.timerContainer}>
-        {fireProgress > 0 && (
-          <View style={styles.timerRow}>
-            <Text style={styles.timerIcon}>🔥</Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${fireProgress * 100}%`, backgroundColor: '#FF5252' }]} />
+      {hasPowerUps && (
+        <View style={styles.powerUpBars}>
+          {fireProgress > 0 && (
+            <View style={styles.barRow}>
+              <Text style={styles.barIcon}>🔥</Text>
+              <View style={styles.barBg}>
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${fireProgress * 100}%`, backgroundColor: '#FF5252' },
+                  ]}
+                />
+              </View>
             </View>
-          </View>
-        )}
-        {wideProgress > 0 && (
-          <View style={styles.timerRow}>
-            <Text style={styles.timerIcon}>↔️</Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${wideProgress * 100}%`, backgroundColor: '#4CAF50' }]} />
+          )}
+          {wideProgress > 0 && (
+            <View style={styles.barRow}>
+              <Text style={styles.barIcon}>↔</Text>
+              <View style={styles.barBg}>
+                <View
+                  style={[
+                    styles.barFill,
+                    { width: `${wideProgress * 100}%`, backgroundColor: '#4CAF50' },
+                  ]}
+                />
+              </View>
             </View>
-          </View>
-        )}
-      </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    paddingHorizontal: 15,
-    marginTop: 40,
+  hud: {
+    ...StyleSheet.absoluteFillObject,
+    paddingTop: 36,
+    paddingHorizontal: 14,
     zIndex: 100,
+    justifyContent: 'flex-start',
   },
-  container: {
+  hudPill: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(25, 25, 35, 0.9)', // Deep Dark Blue Translucent
+    backgroundColor: 'rgba(8, 8, 18, 0.90)',
     borderRadius: 20,
-    borderWidth: 2,
-    borderColor: '#444',
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    // Leave space on right for the WeaponBar overlay
+    marginRight: 76,
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  statBox: {
+  scoreSection: {
+    flex: 1,
     alignItems: 'flex-start',
+  },
+  hudLabel: {
+    color: 'rgba(255,255,255,0.30)',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 2.5,
+    marginBottom: 2,
   },
   scoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  label: {
-    color: '#888',
-    fontSize: 9,
+  scoreValue: {
+    color: '#FFFFFF',
+    fontSize: 22,
     fontWeight: '900',
-    letterSpacing: 1.5,
-    marginBottom: -2,
+    letterSpacing: -0.5,
   },
-  value: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  multiplierBadge: {
+  multiBadge: {
     backgroundColor: '#FFEB3B',
-    borderRadius: 6,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    marginLeft: 6,
-    borderWidth: 1,
-    borderColor: '#000',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.25)',
   },
-  multiplierText: {
+  multiText: {
     color: '#000',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
   },
-  weaponBarVertical: {
-    position: 'absolute',
-    top: 200,
-    right: 15,
-    gap: 12,
-    zIndex: 150,
+  divider: {
+    width: 1,
+    height: 38,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    marginHorizontal: 16,
   },
-  weaponBtn: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(30, 30, 40, 0.95)',
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: '#444',
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
+  livesSection: {
+    alignItems: 'flex-end',
   },
-  weaponActive: {
-    backgroundColor: '#4ECDC4',
-    borderColor: '#FFF',
-    transform: [{ scale: 1.1 }],
+  heartsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 2,
   },
-  weaponIcon: {
-    fontSize: 26,
+  heart: {
+    fontSize: 18,
+    color: '#FF4C6E',
+    lineHeight: 22,
   },
-  badgeContainer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: '#FFEB3B',
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#000',
+  heartDead: {
+    color: 'rgba(255,255,255,0.10)',
   },
-  weaponCount: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#000',
-  },
-  weaponEmpty: {
-    opacity: 0.3,
-  },
-  weaponCountEmpty: {
-    color: '#333',
-  },
-  timerContainer: {
+  powerUpBars: {
     marginTop: 8,
     gap: 5,
-    width: '60%',
+    width: '58%',
   },
-  timerRow: {
+  barRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  timerIcon: {
-    fontSize: 12,
+  barIcon: {
+    fontSize: 11,
+    width: 16,
+    textAlign: 'center',
   },
-  progressBarBg: {
+  barBg: {
     flex: 1,
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 2,
     overflow: 'hidden',
   },
-  progressBarFill: {
+  barFill: {
     height: '100%',
     borderRadius: 2,
   },

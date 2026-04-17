@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Ireland: LevelConfig = {
+  flagColors: ['#169B62', '#FFFFFF', '#FF883E'],
+  flagOrientation: 'v',
   name: 'Ireland Celtic Pillars',
   id: 'IE_ELITE_V1',
   backgroundColor: '#FFFFFF',

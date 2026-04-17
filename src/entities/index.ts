@@ -50,6 +50,9 @@ export const getEntities = (levelIndex = 0) => {
       shake: 0,
       multiplier: 1,
       streak: 0,
+      bricksBroken: 0,
+      maxSpeed: 22,
+      trapRelocations: 0,
       renderer: ScoreBoard,
     },
     paddle: {

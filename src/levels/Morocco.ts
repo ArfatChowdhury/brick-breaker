@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Morocco: LevelConfig = {
+  flagColors: ['#C1272D', '#006233'],
+  flagOrientation: 'h',
   name: 'Morocco Atlas Gate',
   id: 'MA_ELITE_V1',
   backgroundColor: '#C1272D', // Moroccan Red

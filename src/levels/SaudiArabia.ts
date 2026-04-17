@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const SaudiArabia: LevelConfig = {
+  flagColors: ['#006C35', '#FFFFFF'],
+  flagOrientation: 'h',
   name: 'Saudi Arabia Desert Elite',
   id: 'SA_ELITE_V1',
   backgroundColor: '#165D31',

@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Hourglass: LevelConfig = {
+  flagColors: ['#FFD54F', '#212121'],
+  flagOrientation: 'h',
   name: 'The Hourglass',
   id: 'HOURGLASS',
   backgroundColor: '#212121',

@@ -1,6 +1,8 @@
 import { LevelConfig } from './types';
 
 export const Fortress: LevelConfig = {
+  flagColors: ['#546E7A', '#78909C'],
+  flagOrientation: 'h',
   name: 'The Fortress',
   id: 'FORTRESS',
   backgroundColor: '#37474F',
