@@ -153,6 +153,7 @@ export default function App() {
         const enabled = JSON.parse(savedSound);
         setSoundEnabledState(enabled);
         setSoundEnabled(enabled);
+        if (!enabled) stopSound('game_sfx');
       }
 
       // Load branding preference
@@ -186,8 +187,10 @@ export default function App() {
   const onEvent = (e: any) => {
     switch (e.type) {
       case 'game-over':
+        stopSound('game_sfx');
         setRunning(false); setGo(true); setCanRevive(true); break;
       case 'win':
+        stopSound('game_sfx');
         handleWin(e.score); break;
       case 'lose-life':
         setWaitingToStart(true); break;
@@ -282,6 +285,7 @@ export default function App() {
       
       // Trigger Level Intro
       introAnim.setValue(0);
+      playSound('game_sfx', true); // START BACKGROUND MUSIC
       Animated.sequence([
         Animated.timing(introAnim, { toValue: 1, duration: 600, useNativeDriver: true, easing: Easing.out(Easing.back(1.5)) }),
         Animated.delay(1200),
@@ -343,6 +347,7 @@ export default function App() {
       setIsWatchingAd(false);
       cleanup(); // Remove all listeners — prevents ad from auto-showing again
       if (rewarded) {
+        playSound('game_sfx', true); // Resuming music after ad
         // Restore 1 life without resetting level
         setGo(false);
         setCanRevive(false);
@@ -362,6 +367,7 @@ export default function App() {
   };
 
   const backToMenu = () => {
+    stopSound('game_sfx');
     playSound('click');
     setCanRevive(false);
     setShowMenu(true); setRunning(false); setWin(false); setGo(false); setPaused(false);
@@ -602,28 +608,38 @@ export default function App() {
                 />
               )}
 
-              {/* Pause Overlay */}
+              {/* Neon Pause Overlay */}
               {paused && (
-                <View style={styles.overlay}>
-                  <View style={styles.pauseCard}>
-                    <Text style={styles.pauseTitle}>PAUSED</Text>
-                    <Text style={styles.pauseLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>
-                    <View style={styles.pauseButtons}>
-                      <TouchableOpacity onPress={togglePause} style={[styles.overlayBtn, styles.btnResume]}>
-                        <Text style={styles.overlayBtnText}>▶  RESUME</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart]}>
-                        <Text style={styles.overlayBtnText}>↺  RESTART</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => { setShowShop(true); }} style={[styles.overlayBtn, styles.btnNext]}>
-                        <Text style={[styles.overlayBtnText, { color: '#000' }]}>🛒  GO TO SHOP</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit]}>
-                        <Text style={styles.overlayBtnText}>✕  EXIT</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity id="sound-toggle-pause" onPress={toggleSound} style={[styles.overlayBtn, styles.btnSound]}>
-                        <Text style={styles.overlayBtnText}>{soundEnabled ? '🔊  SOUND ON' : '🔇  SOUND OFF'}</Text>
-                      </TouchableOpacity>
+                <View style={[styles.overlay, { paddingHorizontal: 20 }]}>
+                  <View style={styles.boardInner}>
+                    <View style={styles.boardHeaderBadge}>
+                      <Text style={styles.boardHeaderTitle}>PAUSED</Text>
+                    </View>
+                    
+                    <View style={[styles.pauseCard, { backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0 }]}>
+                      <Text style={styles.pauseLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>
+                      
+                      <View style={styles.pauseButtons}>
+                        <TouchableOpacity onPress={togglePause} style={[styles.overlayBtn, styles.btnResume]}>
+                          <Text style={styles.overlayBtnText}>▶  RESUME</Text>
+                        </TouchableOpacity>
+                        
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart, { flex: 1 }]}>
+                            <Text style={styles.overlayBtnText}>↺ RESTART</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={toggleSound} style={[styles.overlayBtn, styles.btnSound, { flex: 1 }]}>
+                            <Text style={styles.overlayBtnText}>{soundEnabled ? '🔊 ON' : '🔇 OFF'}</Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity onPress={() => setShowShop(true)} style={[styles.overlayBtn, { borderColor: '#4CAF50', backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+                          <Text style={styles.overlayBtnText}>🛒  GO TO SHOP</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit]}>
+                          <Text style={styles.overlayBtnText}>✕  MAIN MENU</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -682,6 +698,9 @@ export default function App() {
                               <FlagMiniPreview
                                 flagColors={lvl.flagColors}
                                 flagOrientation={lvl.flagOrientation}
+                                ratios={lvl.flagRatios}
+                                symbol={lvl.flagSymbol}
+                                symbolColor={lvl.flagSymbolColor}
                                 fallbackColor={lvl.backgroundColor}
                               />
                             </View>
@@ -760,57 +779,56 @@ export default function App() {
           </View>
         )}
 
-        {/* Game Over / Win Overlay */}
+        {/* Neon Game Over / Win Overlay */}
         {(go || win) && (
-          <View style={styles.overlay}>
-            <View style={styles.resultCard}>
-              <Text style={styles.resultEmoji}>{go ? '💀' : '🏆'}</Text>
-              <Text style={[styles.resultTitle, win && { color: '#FFD54F' }]}>
-                {go ? 'GAME OVER' : 'LEVEL CLEAR!'}
-              </Text>
-              
-              {win && (
-                <View style={styles.winDetails}>
-                  <View style={styles.resultStarsRow}>
-                    {[1, 2, 3].map(i => (
-                      <Text key={i} style={[styles.resultStar, i <= lastStarsEarned && styles.resultStarActive]}>
-                        ★
-                      </Text>
-                    ))}
+          <View style={[styles.overlay, { paddingHorizontal: 20 }]}>
+            <View style={[styles.boardInner, { borderColor: win ? '#FF00FF' : '#F44336' }]}>
+              <View style={[styles.boardHeaderBadge, { borderColor: win ? '#FF00FF' : '#F44336' }]}>
+                <Text style={[styles.boardHeaderTitle, { textShadowColor: win ? '#FF00FF' : '#F44336' }]}>
+                  {go ? 'GAME OVER' : 'LEVEL CLEAR'}
+                </Text>
+              </View>
+
+              <View style={[styles.resultCard, { backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0 }]}>
+                <Text style={styles.resultEmoji}>{go ? '💀' : '🏆'}</Text>
+                
+                {win && (
+                  <View style={styles.winDetails}>
+                    <View style={styles.resultStarsRow}>
+                      {[1, 2, 3].map(i => (
+                        <Text key={i} style={[styles.resultStar, i <= lastStarsEarned && styles.resultStarActive]}>
+                          ★
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={styles.resultStarSub}>+{lastStarsEarned} STARS EARNED</Text>
+                    <View style={styles.resultEconomy}>
+                      <Text style={styles.resultEcoText}>TIME: {Math.floor(finalTime / 60)}:{(finalTime % 60).toString().padStart(2, '0')}</Text>
+                      <Text style={styles.resultEcoText}>TOTAL ⭐ {starBalance}</Text>
+                    </View>
                   </View>
-                  <Text style={styles.resultStarSub}>+{lastStarsEarned} STARS EARNED</Text>
-                  <View style={styles.resultEconomy}>
-                    <Text style={styles.resultEcoText}>TIME: {Math.floor(finalTime / 60)}:{(finalTime % 60).toString().padStart(2, '0')}</Text>
-                    <Text style={styles.resultEcoText}>TOTAL ⭐ {starBalance}</Text>
+                )}
+
+                <View style={styles.resultButtons}>
+                  {win && currentLevel + 1 < FLAG_LEVELS.length && (
+                    <TouchableOpacity onPress={() => startLevel(currentLevel + 1)} style={[styles.overlayBtn, styles.btnNext]}>
+                      <Text style={[styles.overlayBtnText, { color: '#000' }]}>▶  NEXT LEVEL</Text>
+                    </TouchableOpacity>
+                  )}
+                  {go && canRevive && (
+                    <TouchableOpacity onPress={handleContinueWithAd} style={[styles.overlayBtn, styles.btnContinueAd]}>
+                      <Text style={styles.overlayBtnText}>📺 CONTINUE (AD)</Text>
+                    </TouchableOpacity>
+                  )}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart, { flex: 1 }]}>
+                      <Text style={styles.overlayBtnText}>{go ? '↺ RETRY' : '↺ REPLAY'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnExit, { flex: 1 }]}>
+                      <Text style={styles.overlayBtnText}>⌂ MENU</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-              )}
-
-              {win && <Text style={styles.resultLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>}
-              <View style={styles.resultButtons}>
-                <TouchableOpacity onPress={backToMenu} style={[styles.overlayBtn, styles.btnRestart]}>
-                  <Text style={styles.overlayBtnText}>⌂  MENU</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnResume]}>
-                  <Text style={styles.overlayBtnText}>{go ? '↺  RETRY' : '↺  REPLAY'}</Text>
-                </TouchableOpacity>
-                {/* CONTINUE WITH AD — only on Game Over, not on Win */}
-                {go && canRevive && (
-                  <TouchableOpacity
-                    onPress={handleContinueWithAd}
-                    style={[styles.overlayBtn, styles.btnContinueAd]}
-                  >
-                    <Text style={[styles.overlayBtnText, { color: '#000' }]}>📺  CONTINUE (Watch Ad)</Text>
-                  </TouchableOpacity>
-                )}
-                {win && currentLevel + 1 < FLAG_LEVELS.length && (
-                  <TouchableOpacity
-                    onPress={() => startLevel(currentLevel + 1)}
-                    style={[styles.overlayBtn, styles.btnNext]}
-                  >
-                    <Text style={[styles.overlayBtnText, { color: '#000' }]}>▶  NEXT</Text>
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
           </View>
@@ -981,128 +999,195 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // ── Pause Card ────────────────────────────
+  // ── HUD & Timer ──
+  hudOverlay: {
+    paddingTop: 45,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  hudLevelName: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 15,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00E5FF',
+  },
+  hudLevelText: {
+    color: '#00E5FF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  hudTimer: {
+    backgroundColor: '#0F1218',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#FF00FF', // Neon Magenta
+    shadowColor: '#FF00FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+  },
+  hudTimerText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+
+  // ── Neon Overlay Cards ───────────────────
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 30,
+    zIndex: 100,
   },
   pauseCard: {
-    width: '85%',
-    backgroundColor: '#FFEB3B',
+    width: '90%',
+    backgroundColor: '#0F1218',
     borderRadius: 30,
-    padding: 30,
-    paddingBottom: 60, // Space for global ad
+    padding: 25,
+    paddingTop: 40,
+    borderWidth: 3,
+    borderColor: '#00E5FF',
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
     alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#000',
-    shadowColor: '#000',
-    shadowOffset: { width: 8, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
+  },
+  resultCard: {
+    width: '92%',
+    backgroundColor: '#0F1218',
+    borderRadius: 30,
+    padding: 20,
+    paddingTop: 35,
+    borderWidth: 3,
+    borderColor: '#FF00FF', // Winning is Magenta flavored
+    shadowColor: '#FF00FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
+    alignItems: 'center',
   },
   pauseTitle: {
-    color: '#000',
-    fontSize: 36,
+    color: '#FFF',
+    fontSize: 32,
     fontWeight: '900',
-    letterSpacing: 2,
-    marginBottom: 4,
+    letterSpacing: 4,
+    textShadowColor: '#00E5FF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+    marginBottom: 5,
   },
   pauseLevel: {
-    color: 'rgba(0,0,0,0.5)',
-    fontSize: 16,
+    color: '#00E5FF',
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 24,
+    marginBottom: 20,
+    opacity: 0.8,
   },
   pauseButtons: {
     width: '100%',
-    gap: 15,
+    gap: 12,
   },
 
-  // ── Overlay Buttons ───────────────────────
+  // ── Neon Buttons ──
   overlayBtn: {
-    paddingVertical: 16,
-    borderRadius: 20,
+    paddingVertical: 14,
+    borderRadius: 15,
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#000',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#1A1C24',
   },
   overlayBtnText: {
-    color: '#000',
-    fontSize: 18,
+    color: '#FFF',
+    fontSize: 16,
     fontWeight: '900',
     letterSpacing: 1,
   },
-  btnResume: { backgroundColor: '#4CAF50' },
-  btnRestart: { backgroundColor: '#2196F3' },
-  btnExit: { backgroundColor: '#F44336' },
-  btnNext: { backgroundColor: '#FFC107' },
-  btnContinueAd: { backgroundColor: '#00E676', borderColor: '#000' },
+  btnResume: { borderColor: '#00E5FF', backgroundColor: 'rgba(0, 229, 255, 0.1)' },
+  btnRestart: { borderColor: '#FFEE58', backgroundColor: 'rgba(255, 238, 88, 0.1)' },
+  btnExit: { borderColor: '#F44336', backgroundColor: 'rgba(244, 67, 54, 0.1)' },
+  btnNext: { borderColor: '#00E5FF', backgroundColor: '#00E5FF' }, // Solid cyan for emphasis
+  btnContinueAd: { borderColor: '#4CAF50', backgroundColor: 'rgba(76, 175, 80, 0.1)' },
+  btnSound: { borderColor: '#FF00FF', backgroundColor: 'rgba(255, 0, 255, 0.05)' },
 
   // ── Result Card ───────────────────────────
   resultCard: {
-    width: '85%',
-    backgroundColor: '#FFEB3B',
+    width: '92%',
+    backgroundColor: '#0F1218',
     borderRadius: 30,
-    padding: 30,
-    paddingBottom: 60, // Space for global ad
+    padding: 20,
+    paddingTop: 35,
+    borderWidth: 3,
+    borderColor: '#FF00FF', // Winning is Magenta flavored
+    shadowColor: '#FF00FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
     alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#000',
-    shadowColor: '#000',
-    shadowOffset: { width: 8, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
   },
-  resultEmoji: { fontSize: 60, marginBottom: 10 },
+  resultEmoji: { fontSize: 50, marginBottom: 5 },
   resultTitle: {
-    color: '#000',
-    fontSize: 34,
+    color: '#FFF',
+    fontSize: 30,
     fontWeight: '900',
-    marginBottom: 4,
+    letterSpacing: 2,
+    textShadowColor: '#FF00FF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   resultLevel: {
-    color: 'rgba(0,0,0,0.5)',
-    fontSize: 16,
+    color: '#FF00FF',
+    fontSize: 13,
     fontWeight: '700',
-    marginBottom: 20,
-    marginTop: 5,
+    marginBottom: 15,
+    opacity: 0.8,
   },
   winDetails: {
+    width: '100%',
     alignItems: 'center',
     marginBottom: 15,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 15,
+    borderRadius: 20,
   },
   resultStarsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 15,
     marginBottom: 5,
   },
-  resultStar: {
-    fontSize: 42,
-    color: 'rgba(0,0,0,0.1)',
-  },
+  resultStar: { fontSize: 40, color: 'rgba(255,255,255,0.05)' },
   resultStarActive: {
-    color: '#000',
+    color: '#FFEA00',
+    textShadowColor: '#FFEA00',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
   },
-  resultStarSub: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+  resultStarSub: { color: '#FFEA00', fontSize: 11, fontWeight: '900', marginBottom: 10 },
   resultEconomy: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     marginTop: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
   },
   resultEcoText: {
-    color: 'rgba(0,0,0,0.6)',
-    fontSize: 12,
+    color: '#FFF',
+    fontSize: 13,
     fontWeight: '800',
+    opacity: 0.9,
   },
   resultButtons: {
     width: '100%',

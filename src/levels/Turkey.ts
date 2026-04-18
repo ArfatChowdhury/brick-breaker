@@ -1,8 +1,10 @@
 import { LevelConfig } from './types';
 
 export const Turkey: LevelConfig = {
-  flagColors: ['#E30A17', '#FFFFFF'],
+  flagColors: ['#E30A17'],
   flagOrientation: 'h',
+  flagSymbol: 'moon',
+  flagSymbolColor: '#FFFFFF',
   name: 'Turkey Crescent Elite',
   id: 'TR_ELITE_V1',
   backgroundColor: '#E30A17',

@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Colombia: LevelConfig = {
   flagColors: ['#FCD116', '#003087', '#CE1126'],
   flagOrientation: 'h',
+  flagRatios: [2, 1, 1],
   name: 'Colombia Andean Ridge',
   id: 'CO_ELITE_V1',
   backgroundColor: '#FCD116', // Yellow primarily

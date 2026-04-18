@@ -21,7 +21,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     const launch = events.find((e: any) => e.type === 'launch');
     if (launch) {
       scoreBoard.waitingToStart = false;
-      // Optimization: Cache ball keys if possible, but for start it's fine once
+      playSound('game_start');
       Object.keys(entities).forEach(k => {
         if (k.startsWith('ball_')) entities[k].velocity = [4, -8];
       });
@@ -185,8 +185,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
   const bottomBricks = allBrickKeys.filter(k => {
     const b = entities[k];
-    // Target lower half of screen, preferring stone bricks
-    return b.status && b.position[1] > SCREEN_HEIGHT * 0.55;
+    // Target only the very bottom rows of the stack (typically last 30% of screen height)
+    return b.status && b.position[1] > SCREEN_HEIGHT * 0.65;
   });
 
   // Activate a new trap if none is active and we have relocations remaining
@@ -430,8 +430,24 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
             if (isTrapHit) {
               scoreBoard.score += 1000; // Big Bonus!
               scoreBoard.trapActive = false;
-              scoreBoard.trapRelocations = 3; // Stop re-spawning after player destroys it
-              scoreBoard.shake += 25;
+              scoreBoard.trapRelocations = 3; 
+              scoreBoard.shake += 35; // Increased shake
+              
+              // TRAP BLAST: Destroy minimum 3-5 nearby bricks
+              const BLAST_RADIUS = 100;
+              let destroyedNearTrap = 0;
+              activeBrickKeys.forEach(bk => {
+                const b = entities[bk];
+                if (!b || !b.status || bk === bKey) return;
+                const dist = Math.sqrt(Math.pow(b.position[0] - brick.position[0], 2) + Math.pow(b.position[1] - brick.position[1], 2));
+                if (dist < BLAST_RADIUS) {
+                  b.status = false;
+                  destroyedNearTrap++;
+                  scoreBoard.score += 50;
+                  spawnParticles(entities, b.position, b.color);
+                }
+              });
+              
               spawnBlastWave(entities, brick.position);
             } else {
               scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * scoreBoard.multiplier;
