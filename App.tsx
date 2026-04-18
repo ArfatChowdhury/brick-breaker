@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StatusBar, StyleSheet, View, Text, TouchableOpacity,
-  Animated, Easing, ScrollView,
+  Animated, Easing, ScrollView, Dimensions,
 } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
@@ -23,10 +23,13 @@ import { triggerHaptic } from './src/utils/haptics';
 import WeaponSystem from './src/systems/WeaponSystem';
 import WeaponBar from './src/components/WeaponBar';
 import FlagMiniPreview from './src/components/FlagMiniPreview';
+import { getFlagIcon } from './src/utils/FlagMapper';
 import ShopOverlay from './src/components/ShopOverlay';
 
 const REWARDED_AD_ID = 'ca-app-pub-3315420037530922/8840261664';
 const BANNER_AD_ID = 'ca-app-pub-3315420037530922/9091543100';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // One instance for Shop (earn stars), one for in-game revive
 const shopRewardedAd = RewardedInterstitialAd.createForAdRequest(REWARDED_AD_ID, {
@@ -526,6 +529,22 @@ export default function App() {
           ]}
           pointerEvents={showMenu ? 'none' : 'auto'}
         >
+          {/* FLAG SHADOW UNDERLAY — Dynamic country branding */}
+          {!showMenu && (
+            <View style={styles.flagShadowContainer} pointerEvents="none">
+              {(() => {
+                const FlagComponent = getFlagIcon(FLAG_LEVELS[currentLevel]?.isoCode);
+                return FlagComponent ? (
+                  <FlagComponent 
+                    width={SCREEN_WIDTH * 1.5} 
+                    height={SCREEN_HEIGHT * 1.5} 
+                    style={{ opacity: 0.08 }} // Subtle ghost effect
+                  />
+                ) : null;
+              })()}
+            </View>
+          )}
+
           <GameEngine
             ref={gameEngineRef}
             style={styles.gameContainer}
@@ -895,6 +914,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 100,
     opacity: 0.1,
+  },
+  flagShadowContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: -1, // Behind everything
+    overflow: 'hidden',
   },
   bgDot: {
     width: 4,

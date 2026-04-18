@@ -38,6 +38,15 @@ import { Kenya } from './Kenya';
 import { Vietnam } from './Vietnam';
 import { Morocco } from './Morocco';
 import { Netherlands } from './Netherlands';
+import { PeruMaze } from './PeruMaze';
+import { Qatar } from './Qatar';
+import { Ethiopia } from './Ethiopia';
+import { Nigeria } from './Nigeria';
+import { Kuwait } from './Kuwait';
+import { Singapore } from './Singapore';
+import { Finland } from './Finland';
+import { Ukraine } from './Ukraine';
+import { Mongolia } from './Mongolia';
 import { WorldTourFinale } from './WorldTourFinale';
 import { LevelConfig } from './types';
 
@@ -82,6 +91,15 @@ export const FLAG_LEVELS: LevelConfig[] = [
   Hourglass,
   DiamondCore,
   SouthAfricaMaze,
+  PeruMaze,
+  Qatar,
+  Ethiopia,
+  Nigeria,
+  Kuwait,
+  Singapore,
+  Finland,
+  Ukraine,
+  Mongolia,
   WorldTourFinale,
 ];
 

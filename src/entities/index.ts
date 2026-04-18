@@ -118,7 +118,8 @@ export const getEntities = (levelIndex = 0) => {
       for (let c = 0; c < brickCols; c++) {
         const char = maze[r][c];
         if (char === 'S') {
-          const brickId = `maze_brick_${r}_${c}`;
+          // IMPORTANT: Use the 'brick_' prefix so Physics engine detects collisions automatically
+          const brickId = `brick_maze_${r}_${c}`;
           entities[brickId] = {
             position: [
               2 + c * brickWidth + brickWidth / 2,

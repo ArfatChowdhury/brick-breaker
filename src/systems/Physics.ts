@@ -40,7 +40,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   const activeBallKeys: string[] = [];
   const powerUpKeys: string[] = [];
   const particleKeys: string[] = [];
-  
+
   // Single pass through keys for optimization
   for (let i = 0; i < allKeys.length; i++) {
     const key = allKeys[i];
@@ -57,7 +57,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       const mine = entities[key];
       const targetBrick = entities[mine.attachedTo];
       const currentTime = Date.now();
-      
+
       // 1. Move mine from paddle to target brick (Launch Animation)
       if (targetBrick) {
         if (!mine.scale) mine.scale = 0.5;
@@ -65,7 +65,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
         const dx = targetBrick.position[0] - mine.position[0];
         const dy = targetBrick.position[1] - mine.position[1];
-        const dist = Math.sqrt(dx*dx + dy*dy);
+        const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist > 5) {
           mine.position[0] += dx * 0.2;
           mine.position[1] += dy * 0.2;
@@ -91,12 +91,12 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       const dx = m.target[0] - m.position[0];
       const dy = m.target[1] - m.position[1];
       const dist = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (dist < m.size / 2) {
         // Impact!
         spawnBlastWave(entities, m.position);
         delete entities[key];
-        
+
         // Explode and destroy bricks nearby
         const EXPLOSION_RADIUS = 75;
         scoreBoard._activeBrickKeys.forEach(bk => {
@@ -119,23 +119,23 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       } else {
         const speed = 10;
         const timeElapsed = (Date.now() - m.startTime) / 1000;
-        
+
         // Base Direction
         const baseDirX = dx / dist;
         const baseDirY = dy / dist;
-        
+
         // Perpendicular Vector for Spiral (90deg rotate)
         const perpX = -baseDirY;
         const perpY = baseDirX;
-        
+
         // Spiral amplitude diminishes as it gets closer
         const amplitude = Math.min(dist / 3, 40) * Math.sin(timeElapsed * 15);
-        
+
         m.position[0] += (baseDirX * speed) + (perpX * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
         m.position[1] += (baseDirY * speed) + (perpY * (m.side === 'left' ? 1 : -1) * (amplitude * 0.1));
-        
+
         m.angle = Math.atan2(dy, dx);
-        
+
         // Launch expansion (Scale up)
         if (!m.scale) m.scale = 0.5;
         if (m.scale < 1.0) m.scale += 0.05;
@@ -146,7 +146,6 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   // 1. Brick Key Caching Logic
   if (!scoreBoard._brickCache || scoreBoard._bricksDirty) {
     const bricks = allKeys.filter(k => k.startsWith('brick_') && entities[k].status);
-    // PRIORITY FIX: Sort so stone bricks are checked FIRST
     // This prevents the ball from "bypassing" a wall to hit a brick behind it
     scoreBoard._activeBrickKeys = bricks.sort((a, b) => {
       const typeA = entities[a].type === 'stone' ? 0 : 1;
@@ -157,7 +156,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
     scoreBoard._brickCache = true;
     scoreBoard._bricksDirty = false;
   }
-  
+
   const activeBrickKeys = scoreBoard._activeBrickKeys;
   const clearableBrickKeys = scoreBoard._clearableBrickKeys;
 
@@ -180,13 +179,13 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   if (paddle.flash > 0) paddle.flash -= 1;
   if (paddle.recoil > 0) paddle.recoil *= 0.8;
   if (paddle.recoil < 0.1) paddle.recoil = 0;
-  
+
   // 0c. Environmental Trap Mine System (Relocating every 5–10 seconds)
-  const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
+  const allBrickKeys = Object.keys(entities).filter(k => k.startsWith('brick_'));
   const bottomBricks = allBrickKeys.filter(k => {
     const b = entities[k];
-    // Target only the very bottom rows of the stack (typically last 30% of screen height)
-    return b.status && b.position[1] > SCREEN_HEIGHT * 0.65;
+    // Target lower half of screen, preferring stone bricks
+    return b.status && b.position[1] > SCREEN_HEIGHT * 0.55;
   });
 
   // Activate a new trap if none is active and we have relocations remaining
@@ -217,7 +216,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         // Relocate to a different random bottom brick
         const newBottomBricks = Object.keys(entities).filter(k => {
           const b = entities[k];
-          return (k.startsWith('brick_') || k.startsWith('maze_brick_')) &&
+          return k.startsWith('brick_') &&
             b.status && !b.isTrap && b.position[1] > SCREEN_HEIGHT * 0.55;
         });
         if (newBottomBricks.length > 0) {
@@ -241,7 +240,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
   // --- SUB-STEPPING PHYSICS LOOP ---
   // We run the physics twice per frame at half velocity to eliminate tunneling (passing through bricks)
   const SUB_STEPS = 2;
-  
+
   activeBallKeys.forEach(key => {
     const ball = entities[key];
     if (!ball) return;
@@ -254,7 +253,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       ball.isFire = isFireActive;
       return;
     }
-    
+
     ball.isFire = isFireActive;
 
     for (let s = 0; s < SUB_STEPS; s++) {
@@ -342,18 +341,18 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
       }
 
       // 4b. Top Paddle Collision (Original Logic)
-      if (ball.velocity[1] > 0 && 
-          ball.position[1] + ball.radius >= pTop &&
-          ball.position[1] - ball.radius <= pBottom &&
-          ball.position[0] >= pLeft &&
-          ball.position[0] <= pRight) {
-        
+      if (ball.velocity[1] > 0 &&
+        ball.position[1] + ball.radius >= pTop &&
+        ball.position[1] - ball.radius <= pBottom &&
+        ball.position[0] >= pLeft &&
+        ball.position[0] <= pRight) {
+
         ball.position[1] = pTop - ball.radius - 1;
         const hitPos = (ball.position[0] - pX) / (pW / 2);
         ball.velocity[0] = hitPos * 6;
         ball.velocity[1] = -Math.abs(ball.velocity[1]);
 
-        const currentSpeed = Math.sqrt(ball.velocity[0]**2 + ball.velocity[1]**2);
+        const currentSpeed = Math.sqrt(ball.velocity[0] ** 2 + ball.velocity[1] ** 2);
         if (currentSpeed < 14) {
           ball.velocity[0] *= 1.04;
           ball.velocity[1] *= 1.04;
@@ -400,9 +399,9 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
           // Fireball mode: bigger nudge pushes ball cleanly through bricks
           const isFireMode = !!scoreBoard.powerUpState.FIRE;
           const nudge = isFireMode ? 6 : 1.6;
-          if (hitSide === 'LEFT')   ball.position[0] = bX - bW / 2 - ball.radius - nudge;
-          else if (hitSide === 'RIGHT')  ball.position[0] = bX + bW / 2 + ball.radius + nudge;
-          else if (hitSide === 'TOP')    ball.position[1] = bY - bH / 2 - ball.radius - nudge;
+          if (hitSide === 'LEFT') ball.position[0] = bX - bW / 2 - ball.radius - nudge;
+          else if (hitSide === 'RIGHT') ball.position[0] = bX + bW / 2 + ball.radius + nudge;
+          else if (hitSide === 'TOP') ball.position[1] = bY - bH / 2 - ball.radius - nudge;
           else if (hitSide === 'BOTTOM') ball.position[1] = bY + bH / 2 + ball.radius + nudge;
 
           // Normal mode: reflect velocity; Fire mode: don't reflect (ball passes through)
@@ -430,24 +429,8 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
             if (isTrapHit) {
               scoreBoard.score += 1000; // Big Bonus!
               scoreBoard.trapActive = false;
-              scoreBoard.trapRelocations = 3; 
-              scoreBoard.shake += 35; // Increased shake
-              
-              // TRAP BLAST: Destroy minimum 3-5 nearby bricks
-              const BLAST_RADIUS = 100;
-              let destroyedNearTrap = 0;
-              activeBrickKeys.forEach(bk => {
-                const b = entities[bk];
-                if (!b || !b.status || bk === bKey) return;
-                const dist = Math.sqrt(Math.pow(b.position[0] - brick.position[0], 2) + Math.pow(b.position[1] - brick.position[1], 2));
-                if (dist < BLAST_RADIUS) {
-                  b.status = false;
-                  destroyedNearTrap++;
-                  scoreBoard.score += 50;
-                  spawnParticles(entities, b.position, b.color);
-                }
-              });
-              
+              scoreBoard.trapRelocations = 3; // Stop re-spawning after player destroys it
+              scoreBoard.shake += 25;
               spawnBlastWave(entities, brick.position);
             } else {
               scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * scoreBoard.multiplier;
@@ -565,7 +548,7 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
       const currentBallKeys = Object.keys(entities).filter(k => k.startsWith('ball_'));
       const sourceBall = entities[currentBallKeys[0]];
       if (!sourceBall) return;
-      
+
       const toAddPerBall = 2; // Each existing ball spawns 2 more to TRIPLE
       currentBallKeys.forEach((key, bIdx) => {
         const parentBall = entities[key];
@@ -613,7 +596,7 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
 const explodeMissile = (entities: any, position: [number, number], dispatch: any) => {
   triggerHaptic('notificationSuccess');
   dispatch({ type: 'brick-break' });
-  
+
   // Destroy bricks in a small radius (about 50-60 pixels)
   const brickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
   brickKeys.forEach(key => {
@@ -643,10 +626,10 @@ const spawnBlastWave = (entities: any, position: [number, number]) => {
 const explodeMine = (entities: any, mineKey: string, position: [number, number], brickId: string, dispatch: any) => {
   spawnBlastWave(entities, position);
   entities.scoreBoard.shake += 15;
-  
+
   triggerHaptic('notificationError');
   dispatch({ type: 'brick-break' });
-  
+
   // Remove mine visual entity
   delete entities[mineKey];
 
