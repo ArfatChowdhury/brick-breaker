@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Kenya: LevelConfig = {
   flagColors: ['#000000', '#BB0000', '#006600'],
   flagOrientation: 'h',
+  isoCode: 'ke',
   name: 'Kenya Savannah Core',
   id: 'KE_ELITE_V1',
   backgroundColor: '#FFFFFF',

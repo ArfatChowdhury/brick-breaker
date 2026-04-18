@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Netherlands: LevelConfig = {
   flagColors: ['#AE1C28', '#FFFFFF', '#21468B'],
   flagOrientation: 'h',
+  isoCode: 'nl',
   name: 'Netherlands Windmill Core',
   id: 'NL_ELITE_V1',
   backgroundColor: '#FFFFFF',

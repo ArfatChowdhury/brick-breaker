@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const India: LevelConfig = {
   flagColors: ['#FF9933', '#FFFFFF', '#138808'],
   flagOrientation: 'h',
+  isoCode: 'in',
   name: 'India Tiranga Elite',
   id: 'IN_ELITE_V1',
   backgroundColor: '#FFFFFF',

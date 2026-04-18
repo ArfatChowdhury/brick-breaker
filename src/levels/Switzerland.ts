@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Switzerland: LevelConfig = {
   flagColors: ['#FF0000', '#FFFFFF'],
   flagOrientation: 'h',
+  isoCode: 'ch',
   name: 'Switzerland Alpine Bunker',
   id: 'CH_ELITE_V1',
   backgroundColor: '#FF0000',

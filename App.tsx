@@ -17,7 +17,7 @@ import mobileAds, {
   AdEventType,
   RewardedAdEventType 
 } from 'react-native-google-mobile-ads';
-import { playSound, setSoundEnabled } from './src/utils/audio';
+import { playSound, setSoundEnabled, stopSound } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
 import WeaponSystem from './src/systems/WeaponSystem';
@@ -610,13 +610,13 @@ export default function App() {
 
               {/* Neon Pause Overlay */}
               {paused && (
-                <View style={[styles.overlay, { paddingHorizontal: 20 }]}>
-                  <View style={styles.boardInner}>
+                <View style={styles.overlay}>
+                  <View style={[styles.pauseCard, { overflow: 'visible' }]}>
                     <View style={styles.boardHeaderBadge}>
                       <Text style={styles.boardHeaderTitle}>PAUSED</Text>
                     </View>
                     
-                    <View style={[styles.pauseCard, { backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0 }]}>
+                    <View style={{ width: '100%', alignItems: 'center' }}>
                       <Text style={styles.pauseLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>
                       
                       <View style={styles.pauseButtons}>
@@ -696,11 +696,9 @@ export default function App() {
                           >
                             <View style={styles.boardFullFlag}>
                               <FlagMiniPreview
+                                isoCode={lvl.isoCode}
                                 flagColors={lvl.flagColors}
                                 flagOrientation={lvl.flagOrientation}
-                                ratios={lvl.flagRatios}
-                                symbol={lvl.flagSymbol}
-                                symbolColor={lvl.flagSymbolColor}
                                 fallbackColor={lvl.backgroundColor}
                               />
                             </View>
@@ -781,15 +779,15 @@ export default function App() {
 
         {/* Neon Game Over / Win Overlay */}
         {(go || win) && (
-          <View style={[styles.overlay, { paddingHorizontal: 20 }]}>
-            <View style={[styles.boardInner, { borderColor: win ? '#FF00FF' : '#F44336' }]}>
-              <View style={[styles.boardHeaderBadge, { borderColor: win ? '#FF00FF' : '#F44336' }]}>
+          <View style={styles.overlay}>
+            <View style={[styles.resultCard, { borderColor: win ? '#FF00FF' : '#F44336', shadowColor: win ? '#FF00FF' : '#F44336', overflow: 'visible' }]}>
+              <View style={[styles.boardHeaderBadge, { borderColor: win ? '#FF00FF' : '#F44336', shadowColor: win ? '#FF00FF' : '#F44336' }]}>
                 <Text style={[styles.boardHeaderTitle, { textShadowColor: win ? '#FF00FF' : '#F44336' }]}>
                   {go ? 'GAME OVER' : 'LEVEL CLEAR'}
                 </Text>
               </View>
 
-              <View style={[styles.resultCard, { backgroundColor: 'transparent', borderWidth: 0, shadowOpacity: 0 }]}>
+              <View style={{ width: '100%', alignItems: 'center' }}>
                 <Text style={styles.resultEmoji}>{go ? '💀' : '🏆'}</Text>
                 
                 {win && (
@@ -998,16 +996,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '700',
   },
-
-  // ── HUD & Timer ──
-  hudOverlay: {
-    paddingTop: 45,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 10,
-  },
   hudLevelName: {
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: 15,
@@ -1021,24 +1009,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
-  },
-  hudTimer: {
-    backgroundColor: '#0F1218',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#FF00FF', // Neon Magenta
-    shadowColor: '#FF00FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
-  },
-  hudTimerText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '900',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 
   // ── Neon Overlay Cards ───────────────────
@@ -1058,20 +1028,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#00E5FF',
     shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    alignItems: 'center',
-  },
-  resultCard: {
-    width: '92%',
-    backgroundColor: '#0F1218',
-    borderRadius: 30,
-    padding: 20,
-    paddingTop: 35,
-    borderWidth: 3,
-    borderColor: '#FF00FF', // Winning is Magenta flavored
-    shadowColor: '#FF00FF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 15,

@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Italy: LevelConfig = {
   flagColors: ['#009246', '#FFFFFF', '#CE2B37'],
   flagOrientation: 'v',
+  isoCode: 'it',
   name: 'Italy Il Tricolore Elite',
   id: 'IT_ELITE_V1',
   backgroundColor: '#FFFFFF',

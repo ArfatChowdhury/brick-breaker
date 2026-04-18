@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Australia: LevelConfig = {
   flagColors: ['#002A7F', '#FFFFFF', '#CC0001'],
   flagOrientation: 'h',
+  isoCode: 'au',
   name: 'Australia Southern Cross Elite',
   id: 'AU_ELITE_V1',
   backgroundColor: '#00008B', // Dark Blue

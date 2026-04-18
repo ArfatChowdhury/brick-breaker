@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Argentina: LevelConfig = {
   flagColors: ['#74ACDF', '#FFFFFF', '#74ACDF'],
   flagOrientation: 'h',
+  isoCode: 'ar',
   name: 'Argentina Sol Elite',
   id: 'AR_ELITE_V1',
   backgroundColor: '#74ACDF',

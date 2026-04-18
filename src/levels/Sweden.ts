@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Sweden: LevelConfig = {
   flagColors: ['#006AA7', '#FECC02'],
   flagOrientation: 'h',
+  isoCode: 'se',
   name: 'Sweden Nordic Keep',
   id: 'SE_ELITE_V1',
   backgroundColor: '#005293',

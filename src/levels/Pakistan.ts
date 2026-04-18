@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Pakistan: LevelConfig = {
   flagColors: ['#01411C', '#FFFFFF'],
   flagOrientation: 'v',
+  isoCode: 'pk',
   name: 'Pakistan Crescent Gate',
   id: 'PK_ELITE_V1',
   backgroundColor: '#115740', // Pakistani Dark Green

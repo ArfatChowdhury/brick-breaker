@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Greece: LevelConfig = {
   flagColors: ['#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF'],
   flagOrientation: 'h',
+  isoCode: 'gr',
   name: 'Greece Aegean Columns',
   id: 'GR_ELITE_V1',
   backgroundColor: '#FFFFFF',

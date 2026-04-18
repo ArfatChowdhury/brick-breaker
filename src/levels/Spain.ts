@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Spain: LevelConfig = {
   flagColors: ['#AA151B', '#F1BF00', '#AA151B'],
   flagOrientation: 'h',
+  isoCode: 'es',
   name: 'Spain Rojigualda Sol',
   id: 'ES_ELITE_V1',
   backgroundColor: '#FFFFFF',

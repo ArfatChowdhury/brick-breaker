@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const USA: LevelConfig = {
   flagColors: ['#B22234', '#FFFFFF', '#002868'],
   flagOrientation: 'h',
+  isoCode: 'us',
   name: 'USA Star Fortress Elite',
   id: 'US_ELITE_V2', // Updated version
   backgroundColor: '#002868',

@@ -5,6 +5,7 @@ export const Japan: LevelConfig = {
   flagOrientation: 'h',
   flagSymbol: 'circle',
   flagSymbolColor: '#BC002D',
+  isoCode: 'jp',
   name: 'Japan Zen Elite',
   id: 'JP_ELITE_V1',
   backgroundColor: '#FFFFFF',

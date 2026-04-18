@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, Platform } from 'react-native';
 
 interface ScoreBoardProps {
   score: number;
@@ -9,6 +9,7 @@ interface ScoreBoardProps {
   weaponMode?: 'NORMAL' | 'AIM' | 'MINE';
   powerUpState?: Record<string, number>;
   multiplier?: number;
+  startTime?: number;
 }
 
 const ScoreBoard: React.FC<ScoreBoardProps> = ({
@@ -16,8 +17,16 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({
   lives,
   powerUpState,
   multiplier = 1,
+  startTime,
 }) => {
   const currentTime = Date.now();
+  
+  const formattedTime = startTime ? (() => {
+    const s = Math.floor((currentTime - startTime) / 1000);
+    const m = Math.floor(s / 60);
+    const sec = (s % 60).toString().padStart(2, '0');
+    return `${m}:${sec}`;
+  })() : '0:00';
 
   const getPowerUpProgress = (expiry?: number) => {
     if (!expiry) return 0;
@@ -44,6 +53,9 @@ const ScoreBoard: React.FC<ScoreBoardProps> = ({
                 <Text style={styles.multiText}>{multiplier}×</Text>
               </View>
             )}
+            <View style={styles.timerTag}>
+              <Text style={styles.timerText}>{formattedTime}</Text>
+            </View>
           </View>
         </View>
 
@@ -203,6 +215,21 @@ const styles = StyleSheet.create({
   barFill: {
     height: '100%',
     borderRadius: 2,
+  },
+  timerTag: {
+    marginLeft: 8,
+    backgroundColor: 'rgba(255, 0, 255, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF00FF',
+  },
+  timerText: {
+    color: '#FF00FF',
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
 });
 

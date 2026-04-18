@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Vietnam: LevelConfig = {
   flagColors: ['#DA251D', '#FFFF00'],
   flagOrientation: 'h',
+  isoCode: 'vn',
   name: 'Vietnam Dragon Tooth',
   id: 'VN_ELITE_V1',
   backgroundColor: '#DA251D', // Vietnamese Red

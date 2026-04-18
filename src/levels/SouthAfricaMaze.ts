@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const SouthAfricaMaze: LevelConfig = {
   flagColors: ['#007A4D', '#000000', '#FFB81C'],
   flagOrientation: 'h',
+  isoCode: 'za',
   name: 'South Africa Pro',
   id: 'SA_MAZE_V4',
   backgroundColor: '#007A3D',

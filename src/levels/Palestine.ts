@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Palestine: LevelConfig = {
   flagColors: ['#000000', '#FFFFFF', '#007A3D'],
   flagOrientation: 'h',
+  isoCode: 'ps',
   name: 'Palestine Stronghold Elite',
   id: 'PS_ELITE_V1',
   backgroundColor: '#FFFFFF',

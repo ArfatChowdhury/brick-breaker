@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Nepal: LevelConfig = {
   flagColors: ['#DC143C', '#003893'],
   flagOrientation: 'h',
+  isoCode: 'np',
   name: 'Nepal Tri-Peak Elite',
   id: 'NP_ELITE_V1',
   backgroundColor: '#DC143C',

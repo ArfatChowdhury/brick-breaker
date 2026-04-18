@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Portugal: LevelConfig = {
   flagColors: ['#006600', '#FF0000'],
   flagOrientation: 'v',
+  isoCode: 'pt',
   name: 'Portugal Navigator Elite',
   id: 'PT_ELITE_V1',
   backgroundColor: '#FFFFFF',

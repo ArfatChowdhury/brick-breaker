@@ -5,6 +5,7 @@ export const Turkey: LevelConfig = {
   flagOrientation: 'h',
   flagSymbol: 'moon',
   flagSymbolColor: '#FFFFFF',
+  isoCode: 'tr',
   name: 'Turkey Crescent Elite',
   id: 'TR_ELITE_V1',
   backgroundColor: '#E30A17',

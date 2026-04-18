@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const UK: LevelConfig = {
   flagColors: ['#012169', '#C8102E', '#FFFFFF'],
   flagOrientation: 'h',
+  isoCode: 'gb',
   name: 'UK Royal Elite',
   id: 'UK_ELITE_V1',
   backgroundColor: '#012169',

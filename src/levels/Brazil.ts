@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const Brazil: LevelConfig = {
   flagColors: ['#009C3B', '#FEDF00', '#002776'],
   flagOrientation: 'h',
+  isoCode: 'br',
   name: 'Brazil Ordem Elite',
   id: 'BR_ELITE_V2', // Refined version
   backgroundColor: '#00B32C', 

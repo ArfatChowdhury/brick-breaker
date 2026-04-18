@@ -3,6 +3,7 @@ import { LevelConfig } from './types';
 export const China: LevelConfig = {
   flagColors: ['#DE2910', '#FFDE00'],
   flagOrientation: 'h',
+  isoCode: 'cn',
   name: 'China Jade Fortress',
   id: 'CN_ELITE_V1',
   backgroundColor: '#EE1C25', // Red
