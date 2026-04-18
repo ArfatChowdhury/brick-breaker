@@ -66,3 +66,7 @@ yarn-error.log
 /coverage
 
 *.txt
+
+# Temporary repair and patch scripts
+patch*.js
+repair*.js

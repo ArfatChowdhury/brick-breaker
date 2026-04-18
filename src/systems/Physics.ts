@@ -340,7 +340,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         }
       }
 
-      // 4b. Top Paddle Collision (Original Logic)
+      // 4b. Top Paddle Collision (Brick Mania Angle Logic)
       if (ball.velocity[1] > 0 &&
         ball.position[1] + ball.radius >= pTop &&
         ball.position[1] - ball.radius <= pBottom &&
@@ -348,16 +348,27 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
         ball.position[0] <= pRight) {
 
         ball.position[1] = pTop - ball.radius - 1;
-        const hitPos = (ball.position[0] - pX) / (pW / 2);
-        ball.velocity[0] = hitPos * 6;
-        ball.velocity[1] = -Math.abs(ball.velocity[1]);
+        
+        // Clamp hitPos between -1 and 1 just in case
+        let hitPos = (ball.position[0] - pX) / (pW / 2);
+        if (hitPos < -1) hitPos = -1;
+        if (hitPos > 1) hitPos = 1;
 
+        // Brick Mania Style: predictable angle based on hit position
+        const MAX_ANGLE = Math.PI / 3; // 60 degrees max spread from vertical
+        const bounceAngle = hitPos * MAX_ANGLE;
+        
+        // Preserve exact speed
         const currentSpeed = Math.sqrt(ball.velocity[0] ** 2 + ball.velocity[1] ** 2);
-        if (currentSpeed < 14) {
-          ball.velocity[0] *= 1.04;
-          ball.velocity[1] *= 1.04;
+        
+        ball.velocity[0] = Math.sin(bounceAngle) * currentSpeed;
+        ball.velocity[1] = -Math.cos(bounceAngle) * currentSpeed;
+
+        if (Math.abs(ball.velocity[1]) < MIN_VY) {
+           ball.velocity[1] = -MIN_VY;
+           const newVx = Math.sqrt(Math.max(1, currentSpeed**2 - MIN_VY**2));
+           ball.velocity[0] = ball.velocity[0] < 0 ? -newVx : newVx;
         }
-        if (Math.abs(ball.velocity[1]) < MIN_VY) ball.velocity[1] = -MIN_VY;
 
         scoreBoard.multiplier = 1;
         scoreBoard.streak = 0;
@@ -406,12 +417,15 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
           // Normal mode: reflect velocity; Fire mode: don't reflect (ball passes through)
           if (!isFireMode) {
+            const currentSpeed = Math.sqrt(ball.velocity[0] ** 2 + ball.velocity[1] ** 2);
             if (overlapX < overlapY) ball.velocity[0] *= -1;
             else ball.velocity[1] *= -1;
-          }
-
-          if (!isFireMode && Math.abs(ball.velocity[1]) < MIN_VY) {
-            ball.velocity[1] = ball.velocity[1] < 0 ? -MIN_VY : MIN_VY;
+            
+            if (Math.abs(ball.velocity[1]) < MIN_VY) {
+              ball.velocity[1] = ball.velocity[1] < 0 ? -MIN_VY : MIN_VY;
+              const newVx = Math.sqrt(Math.max(1, currentSpeed ** 2 - MIN_VY ** 2));
+              ball.velocity[0] = ball.velocity[0] < 0 ? -newVx : newVx;
+            }
           }
 
           // Fire mode kills bricks instantly (3 damage); normal uses positional damage
@@ -458,7 +472,9 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
             }
 
             if (isMineHit) {
-              explodeMine(entities, brick.position, bKey, dispatch);
+              // Find the matching mine entity key and pass correct args
+              const mineEntityKey = Object.keys(entities).find(k => k.startsWith('mine_') && entities[k].attachedTo === bKey);
+              explodeMine(entities, mineEntityKey || bKey, brick.position, bKey, dispatch);
             } else {
               dispatch({ type: brick.type === 'stone' ? 'brick-hit' : 'brick-break' });
               playSound(brick.type === 'stone' ? 'hit_hurt' : 'explosion');
@@ -489,7 +505,7 @@ const Physics = (entities: any, { time, dispatch, events }: any) => {
 
   if (clearableBrickKeys.length === 0 && !scoreBoard.waitingToStart) {
     const timeTaken = Math.floor((Date.now() - scoreBoard.startTime) / 1000);
-    dispatch({ type: 'win', score: scoreBoard.score, timeTaken });
+    dispatch({ type: 'win', score: scoreBoard.score, timeTaken, maxScore: scoreBoard.maxScore });
     playSound('victory');
     // Safety check: Filter out any ball keys that might have been deleted this frame
     activeBallKeys.forEach(k => {
@@ -593,36 +609,6 @@ const applyPowerUp = (entities: any, type: string, currentBallCount: number) => 
   }
 };
 
-const explodeMissile = (entities: any, position: [number, number], dispatch: any) => {
-  triggerHaptic('notificationSuccess');
-  dispatch({ type: 'brick-break' });
-
-  // Destroy bricks in a small radius (about 50-60 pixels)
-  const brickKeys = Object.keys(entities).filter(k => k.startsWith('brick_') || k.startsWith('maze_brick_'));
-  brickKeys.forEach(key => {
-    const b = entities[key];
-    if (!b.status) return;
-    const dist = Math.sqrt(Math.pow(b.position[0] - position[0], 2) + Math.pow(b.position[1] - position[1], 2));
-    if (dist < 60) {
-      b.status = false;
-      entities.scoreBoard.score += 20;
-      entities.scoreBoard._bricksDirty = true;
-      spawnParticles(entities, b.position, b.color || '#FFF');
-    }
-  });
-};
-
-const spawnBlastWave = (entities: any, position: [number, number]) => {
-  const blastId = `blast_${Date.now()}`;
-  entities[blastId] = {
-    position,
-    size: 150,
-    renderer: require('../components/BlastWave').default,
-  };
-  // Automatically remove after 500ms
-  setTimeout(() => { delete entities[blastId]; }, 500);
-};
-
 const explodeMine = (entities: any, mineKey: string, position: [number, number], brickId: string, dispatch: any) => {
   spawnBlastWave(entities, position);
   entities.scoreBoard.shake += 15;
@@ -641,7 +627,7 @@ const explodeMine = (entities: any, mineKey: string, position: [number, number],
     const dist = Math.sqrt(Math.pow(b.position[0] - position[0], 2) + Math.pow(b.position[1] - position[1], 2));
     if (dist < 160) { // Increased radius (100 -> 160) to hit ~3-5 bricks
       b.status = false;
-      entities.scoreBoard.score += 30;
+      entities.scoreBoard.score += 30 * entities.scoreBoard.multiplier;
       entities.scoreBoard._bricksDirty = true;
       spawnParticles(entities, b.position, b.color || '#F44336');
     }
@@ -664,6 +650,17 @@ const spawnParticles = (entities: any, position: [number, number], color: string
       renderer: Particle,
     };
   }
+};
+
+const spawnBlastWave = (entities: any, position: [number, number]) => {
+  const blastId = `blast_${Date.now()}`;
+  entities[blastId] = {
+    position,
+    size: 150,
+    renderer: require('../components/BlastWave').default,
+  };
+  // Automatically remove after 500ms
+  setTimeout(() => { delete entities[blastId]; }, 500);
 };
 
 export default Physics;

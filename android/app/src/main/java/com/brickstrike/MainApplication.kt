@@ -1,4 +1,4 @@
-package com.brickbreakergame
+package com.brickstrike
 
 import android.app.Application
 import com.facebook.react.PackageList

@@ -1,9 +1,10 @@
 {
-  "name": "BrickBreakerGame",
+  "name": "BrickStrike",
   "version": "0.0.1",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "build:android": "cd android && ./gradlew bundleRelease",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StatusBar, StyleSheet, View, Text, TouchableOpacity,
-  Animated, Easing, ScrollView, Dimensions,
+  Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus
 } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
@@ -13,6 +13,7 @@ import mobileAds, {
   BannerAd, 
   BannerAdSize, 
   TestIds, 
+  InterstitialAd,
   RewardedInterstitialAd, 
   AdEventType,
   RewardedAdEventType 
@@ -28,6 +29,7 @@ import ShopOverlay from './src/components/ShopOverlay';
 
 const REWARDED_AD_ID = 'ca-app-pub-3315420037530922/8840261664';
 const BANNER_AD_ID = 'ca-app-pub-3315420037530922/9091543100';
+const INTERSTITIAL_AD_ID = 'ca-app-pub-3315420037530922/5850391385';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -36,6 +38,10 @@ const shopRewardedAd = RewardedInterstitialAd.createForAdRequest(REWARDED_AD_ID,
   requestNonPersonalizedAdsOnly: true,
 });
 const reviveRewardedAd = RewardedInterstitialAd.createForAdRequest(REWARDED_AD_ID, {
+  requestNonPersonalizedAdsOnly: true,
+});
+
+const interstitialAd = InterstitialAd.createForAdRequest(INTERSTITIAL_AD_ID, {
   requestNonPersonalizedAdsOnly: true,
 });
 
@@ -58,6 +64,8 @@ export default function App() {
   const [win, setWin] = useState(false);
   const [paused, setPaused] = useState(false);
   const [waitingToStart, setWaitingToStart] = useState(true);
+  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
+  const [totalPausedMs, setTotalPausedMs] = useState(0);
   const [weaponMode, setWeaponMode] = useState<'NORMAL' | 'AIM' | 'MINE'>('NORMAL');
   const [soundEnabled, setSoundEnabledState] = useState(true);
   
@@ -109,8 +117,48 @@ export default function App() {
     loadProgress();
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState.match(/inactive|background/)) {
+        stopSound('game_sfx');
+      } else if (nextAppState === 'active') {
+        if (soundEnabled && running && !paused && !showMenu && !win && !go) {
+          playSound('game_sfx', true);
+        }
+      }
+    });
+    return () => subscription.remove();
+  }, [running, paused, showMenu, win, go, soundEnabled]);
+
+  // ── Interstitial Ad Lifecycle Management ──
+  useEffect(() => {
+    if (!adsReady) return;
+
+    const unsubscribeLoaded = interstitialAd.addAdEventListener(AdEventType.LOADED, () => {
+      console.log('[Interstitial] Ad Loaded and ready');
+    });
+
+    const unsubscribeError = interstitialAd.addAdEventListener(AdEventType.ERROR, (error) => {
+      console.log('[Interstitial] Ad Failed to Load:', error);
+    });
+
+    const unsubscribeClosed = interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[Interstitial] Ad Closed, preloading next...');
+      interstitialAd.load(); // Preload next one
+    });
+
+    console.log('[Interstitial] Initialization Guard passed, loading...');
+    interstitialAd.load();
+
+    return () => {
+      unsubscribeLoaded();
+      unsubscribeError();
+      unsubscribeClosed();
+    };
+  }, [adsReady]);
+
   const loadProgress = async () => {
-    try {
+try {
       const savedLevels = await AsyncStorage.getItem('@unlocked_levels');
       const savedScores = await AsyncStorage.getItem('@high_scores');
       
@@ -167,7 +215,6 @@ export default function App() {
     } catch (e) { console.log('Error loading progress', e); }
 
   };
-
   const saveProgress = async (levels: number[], scores: any, economy?: any) => {
     try {
       await AsyncStorage.setItem('@unlocked_levels', JSON.stringify(levels));
@@ -194,7 +241,7 @@ export default function App() {
         setRunning(false); setGo(true); setCanRevive(true); break;
       case 'win':
         stopSound('game_sfx');
-        handleWin(e.score); break;
+        handleWin(e.score, e.timeTaken, e.maxScore); break;
       case 'lose-life':
         setWaitingToStart(true); break;
       case 'shake':
@@ -224,29 +271,36 @@ export default function App() {
     ]).start();
   };
 
-  const handleWin = (finalScore: number, timeTaken?: number) => {
+  const handleWin = (finalScore: number, timeTaken?: number, maxScore?: number) => {
     setRunning(false); setWin(true); setWaitingToStart(true);
     playSound('victory'); triggerHaptic('notificationSuccess');
 
-    // ── Star Calculation ──
-    const level = FLAG_LEVELS[currentLevel];
-    const thresholds = level.starThresholds || [90, 120];
+    // ── Score-based Star Calculation ──
+    const currentScore = finalScore || 0;
+    const levelMax = maxScore || Math.max(100, currentScore);
+
     let stars = 1;
-    if (timeTaken) {
-      setFinalTime(timeTaken);
-      if (timeTaken < thresholds[0]) stars = 3;
-      else if (timeTaken < thresholds[1]) stars = 2;
+    if (currentScore >= levelMax * 0.7) {
+      stars = 3;
+    } else if (currentScore >= levelMax * 0.4) {
+      stars = 2;
     }
+    
+    if (timeTaken) {
+      // timeTaken is in seconds, totalPausedMs is in ms
+      const adjustedTimeMs = (timeTaken * 1000) - totalPausedMs;
+      setFinalTime(Math.max(1, Math.floor(adjustedTimeMs / 1000)));
+    }
+    
     setLastStarsEarned(stars);
     const newStarBalance = starBalance + stars;
     setStarBalance(newStarBalance);
 
-    const currentScore = finalScore || 0;
+    const level = FLAG_LEVELS[currentLevel];
     const levelId = level.id;
     const newScores = { ...highScores };
     
-    // Store score and stars in highScores
-    // We'll store it as a encoded string "score|stars" to keep it compatible with existing parse
+    // Store score and stars in highScores using "score|stars" format
     const prevEntry = newScores[levelId] || 0;
     const prevScore = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[0]) : prevEntry;
     const prevStars = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[1]) : 0;
@@ -272,9 +326,22 @@ export default function App() {
     });
   };
 
+  const handleNextLevel = () => {
+    if (interstitialAd.loaded) {
+      const unsubClosed = interstitialAd.addAdEventListener(AdEventType.CLOSED, () => {
+        unsubClosed();
+        startLevel(currentLevel + 1);
+      });
+      interstitialAd.show();
+    } else {
+      startLevel(currentLevel + 1);
+    }
+  };
+
   const startLevel = (index: number) => {
     setCurrentLevel(index); setShowMenu(false); setRunning(true);
-    setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
+setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
+    setTotalPausedMs(0); setPauseStartTime(null);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
 
     if (gameEngineRef.current) {
@@ -306,10 +373,22 @@ export default function App() {
     }
   };
 
-  const togglePause = () => { setPaused(p => !p); triggerHaptic('impactLight'); };
+  const togglePause = () => { 
+    setPaused(p => {
+      if (!p) {
+        setPauseStartTime(Date.now());
+      } else if (pauseStartTime) {
+        setTotalPausedMs(prev => prev + (Date.now() - pauseStartTime));
+        setPauseStartTime(null);
+      }
+      return !p;
+    }); 
+    triggerHaptic('impactLight'); 
+  };
 
   const reset = () => {
     setGo(false); setWin(false); setRunning(true); setWaitingToStart(true); setCanRevive(false);
+    setTotalPausedMs(0); setPauseStartTime(null);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
       const ents = getEntities(currentLevel);
@@ -339,16 +418,26 @@ export default function App() {
     };
 
     unsubLoaded = reviveRewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      console.log('[Rewarded Revive] Ad Loaded');
       reviveRewardedAd.show();
     });
     unsubEarned = reviveRewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+      console.log('[Rewarded Revive] Reward Earned');
       rewarded = true;
       triggerHaptic('notificationSuccess');
       playSound('power_up');
     });
+    const unsubError = reviveRewardedAd.addAdEventListener(AdEventType.ERROR, (error) => {
+      console.log('[Rewarded Revive] Ad Failed to Load:', error);
+      setIsWatchingAd(false);
+      cleanup();
+      unsubError();
+    });
     unsubClosed = reviveRewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+      console.log('[Rewarded Revive] Ad Closed');
       setIsWatchingAd(false);
       cleanup(); // Remove all listeners — prevents ad from auto-showing again
+      unsubError();
       if (rewarded) {
         playSound('game_sfx', true); // Resuming music after ad
         // Restore 1 life without resetting level
@@ -366,6 +455,7 @@ export default function App() {
       }
     });
 
+    console.log('[Rewarded Revive] Loading...');
     reviveRewardedAd.load();
   };
 
@@ -390,6 +480,11 @@ export default function App() {
     if (newMode === 'AIM' && weaponCounts.missiles === 0) return;
     if (newMode === 'MINE' && weaponCounts.mines === 0) return;
     triggerHaptic('impactLight');
+    setWeaponMode(newMode);
+    
+    if (gameEngineRef.current && typeof gameEngineRef.current.dispatch === 'function') {
+      gameEngineRef.current.dispatch({ type: 'set-weapon-mode', mode: newMode });
+    }
   };
 
   const handleBuy = (item: any) => {
@@ -410,18 +505,28 @@ export default function App() {
       };
 
       unsubLoaded = shopRewardedAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
+        console.log('[Rewarded Shop] Ad Loaded');
         shopRewardedAd.show();
       });
 
       unsubEarned = shopRewardedAd.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
+        console.log('[Rewarded Shop] Reward Earned');
         starsAwarded = true;
         triggerHaptic('notificationSuccess');
-        // Don't call .load() here — let CLOSED handle cleanup
+      });
+
+      const unsubError = shopRewardedAd.addAdEventListener(AdEventType.ERROR, (error) => {
+        console.log('[Rewarded Shop] Ad Failed to Load:', error);
+        setIsWatchingAd(false);
+        cleanup();
+        unsubError();
       });
 
       unsubClosed = shopRewardedAd.addAdEventListener(AdEventType.CLOSED, () => {
+        console.log('[Rewarded Shop] Ad Closed');
         setIsWatchingAd(false);
-        cleanup(); // Remove all listeners — prevents ad from auto-showing again
+        cleanup(); // Remove all listeners
+        unsubError();
         if (starsAwarded) {
           const newBalance = starBalance + 5;
           setStarBalance(newBalance);
@@ -429,6 +534,7 @@ export default function App() {
         }
       });
 
+      console.log('[Rewarded Shop] Loading...');
       shopRewardedAd.load();
       return;
     }
@@ -828,7 +934,7 @@ export default function App() {
 
                 <View style={styles.resultButtons}>
                   {win && currentLevel + 1 < FLAG_LEVELS.length && (
-                    <TouchableOpacity onPress={() => startLevel(currentLevel + 1)} style={[styles.overlayBtn, styles.btnNext]}>
+                    <TouchableOpacity onPress={handleNextLevel} style={[styles.overlayBtn, styles.btnNext]}>
                       <Text style={[styles.overlayBtnText, { color: '#000' }]}>▶  NEXT LEVEL</Text>
                     </TouchableOpacity>
                   )}

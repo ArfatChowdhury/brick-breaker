@@ -109,6 +109,18 @@ export const getEntities = (levelIndex = 0) => {
     }
   }
 
+  // --- Calculate Baseline Max Score ---
+  let baseMaxScore = 0;
+  Object.keys(entities).forEach(k => {
+    if (k.startsWith('brick_')) {
+      const b = entities[k];
+      if (!b.permanent) {
+        baseMaxScore += b.type === 'stone' ? 50 : 10;
+      }
+    }
+  });
+  entities.scoreBoard.maxScore = Math.max(100, baseMaxScore);
+
   // --- PHASE 2: Append Random Maze ---
   if (level.mazeEnabled) {
     const mazeRows = level.mazeRows ?? 8;
