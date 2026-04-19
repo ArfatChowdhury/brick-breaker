@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   StatusBar, StyleSheet, View, Text, TouchableOpacity,
-  Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus
+  Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus,
+  Linking, Modal
 } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
@@ -58,7 +59,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
   const [currentLevel, setCurrentLevel] = useState(0);
-  const [unlockedLevels, setUnlockedLevels] = useState(FLAG_LEVELS.map((_, i) => i));
+  const [unlockedLevels, setUnlockedLevels] = useState([0]);
   const [highScores, setHighScores] = useState<{ [key: string]: number }>({});
   const [go, setGo] = useState(false);
   const [win, setWin] = useState(false);
@@ -79,11 +80,18 @@ export default function App() {
   const [lastStarsEarned, setLastStarsEarned] = useState(0);
   const [finalTime, setFinalTime] = useState(0);
   
+  // Skins State
+  const [currentPaddleSkin, setCurrentPaddleSkin] = useState<string | null>(null);
+  const [currentBallSkin, setCurrentBallSkin] = useState<string | null>(null);
+  const [unlockedSkins, setUnlockedSkins] = useState<string[]>([]);
+  
   const [showShop, setShowShop] = useState(false);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [adPurpose, setAdPurpose] = useState<'shop' | 'revive'>('shop');
   const [canRevive, setCanRevive] = useState(false);
-  const [adsReady, setAdsReady] = useState(false); // Gate banner until AdMob is initialized
+  const [adsReady, setAdsReady] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(true); // Default to true while loading
+ // Gate banner until AdMob is initialized
   const [showBranding, setShowBranding] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
@@ -167,20 +175,7 @@ try {
         parsedLevels = JSON.parse(savedLevels);
       }
 
-      // Force unlock all newly added levels globally
-      let newlyUnlocked = false;
-      FLAG_LEVELS.forEach((_, index) => {
-        if (!parsedLevels.includes(index)) {
-          parsedLevels.push(index);
-          newlyUnlocked = true;
-        }
-      });
-      
-      if (newlyUnlocked || !savedLevels) {
-        saveProgress(parsedLevels, JSON.parse(savedScores || '{}'));
-      }
-      
-      setUnlockedLevels(parsedLevels);
+      setUnlockedLevels(parsedLevels.length > 0 ? parsedLevels : [0]);
       if (savedScores) setHighScores(JSON.parse(savedScores));
       
       // Load economy
@@ -196,6 +191,11 @@ try {
           missiles: eco.missiles !== undefined ? eco.missiles : 3, 
           mines: eco.mines !== undefined ? eco.mines : 3 
         });
+        
+        // Load Skins
+        setUnlockedSkins(eco.unlockedSkins || []);
+        setCurrentPaddleSkin(eco.currentPaddleSkin || null);
+        setCurrentBallSkin(eco.currentBallSkin || null);
       }
 
       // Load sound preference
@@ -206,6 +206,10 @@ try {
         setSoundEnabled(enabled);
         if (!enabled) stopSound('game_sfx');
       }
+
+      // Load privacy preference
+      const savedPrivacy = await AsyncStorage.getItem('@privacy_accepted');
+      setPrivacyAccepted(savedPrivacy === 'true');
 
       // Load branding preference
       const savedBranding = await AsyncStorage.getItem('@show_branding');
@@ -345,7 +349,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
 
     if (gameEngineRef.current) {
-      const ents = getEntities(index);
+      const ents = getEntities(index, currentPaddleSkin, currentBallSkin);
       ents.scoreBoard.waitingToStart = true;
       // Inject global weapons stock
       ents.scoreBoard.missiles = missileStock;
@@ -391,7 +395,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     setTotalPausedMs(0); setPauseStartTime(null);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
-      const ents = getEntities(currentLevel);
+      const ents = getEntities(currentLevel, currentPaddleSkin, currentBallSkin);
       ents.scoreBoard.waitingToStart = true;
       ents.scoreBoard.missiles = missileStock;
       ents.scoreBoard.mines = mineStock;
@@ -545,19 +549,41 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     let newMissiles = missileStock;
     let newMines = mineStock;
     let newThemes = [...unlockedThemes];
+    let newUnlockedSkins = [...unlockedSkins];
+    let newPaddleSkin = currentPaddleSkin;
+    let newBallSkin = currentBallSkin;
 
     if (item.id === 'missile_3') newMissiles += 3;
     if (item.id === 'mine_2') newMines += 2;
     if (item.type === 'THEME') {
       if (!newThemes.includes(item.id)) newThemes.push(item.id);
       setUnlockedThemes(newThemes);
-      // Immediately equip the new theme
       setCurrentTheme(item.id);
-      // Apply to running game if mid-level
       if (gameEngineRef.current) {
         const state = gameEngineRef.current.state;
-        if (state?.entities?.paddle) {
-          state.entities.paddle.themeId = item.id;
+        if (state?.entities?.paddle) state.entities.paddle.themeId = item.id;
+      }
+    }
+
+    if (item.type === 'SKIN_PADDLE' || item.type === 'SKIN_BALL') {
+      if (!newUnlockedSkins.includes(item.id)) newUnlockedSkins.push(item.id);
+      setUnlockedSkins(newUnlockedSkins);
+      
+      const iso = item.id.replace('PADDLE_', '').replace('BALL_', '');
+      if (item.type === 'SKIN_PADDLE') {
+        newPaddleSkin = iso;
+        setCurrentPaddleSkin(iso);
+        if (gameEngineRef.current?.state?.entities?.paddle) {
+          gameEngineRef.current.state.entities.paddle.flagSkin = iso;
+        }
+      } else {
+        newBallSkin = iso;
+        setCurrentBallSkin(iso);
+        if (gameEngineRef.current) {
+          const state = gameEngineRef.current.state;
+          Object.keys(state.entities).forEach(k => {
+            if (k.startsWith('ball_')) state.entities[k].flagSkin = iso;
+          });
         }
       }
     }
@@ -573,14 +599,56 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       mines: newMines,
       themes: newThemes,
       currentTheme: item.type === 'THEME' ? item.id : currentTheme,
+      unlockedSkins: newUnlockedSkins,
+      currentPaddleSkin: newPaddleSkin,
+      currentBallSkin: newBallSkin,
     });
     triggerHaptic('notificationSuccess');
     playSound('blip_select');
   };
 
+  const handleEquipSkin = (type: 'BALL' | 'PADDLE', iso: string | null) => {
+    if (type === 'PADDLE') {
+      setCurrentPaddleSkin(iso);
+      if (gameEngineRef.current?.state?.entities?.paddle) {
+        gameEngineRef.current.state.entities.paddle.flagSkin = iso;
+      }
+    } else {
+      setCurrentBallSkin(iso);
+      if (gameEngineRef.current) {
+        const state = gameEngineRef.current.state;
+        Object.keys(state.entities).forEach(k => {
+          if (k.startsWith('ball_')) state.entities[k].flagSkin = iso;
+        });
+      }
+    }
+    saveProgress(unlockedLevels, highScores, { 
+      stars: starBalance, 
+      missiles: missileStock, 
+      mines: mineStock,
+      themes: unlockedThemes,
+      currentTheme,
+      unlockedSkins,
+      currentPaddleSkin: type === 'PADDLE' ? iso : currentPaddleSkin,
+      currentBallSkin: type === 'BALL' ? iso : currentBallSkin,
+    });
+    triggerHaptic('impactLight');
+  };
+  const handleAcceptPrivacy = async () => {
+    setPrivacyAccepted(true);
+    await AsyncStorage.setItem('@privacy_accepted', 'true');
+    triggerHaptic('notificationSuccess');
+  };
+
+  const openPrivacyPolicy = () => {
+    Linking.openURL('https://brick-breaker-website.vercel.app/privacy');
+    triggerHaptic('impactLight');
+  };
 
   const renderDifficultyStars = (levelId: string) => {
     const entry = highScores[levelId];
+
+
     let stars = 0;
     if (entry) {
       if (typeof entry === 'string' && entry.includes('|')) {
@@ -655,7 +723,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
             ref={gameEngineRef}
             style={styles.gameContainer}
             systems={[MovePaddle, WeaponSystem, Physics]}
-            entities={getEntities(currentLevel)}
+            entities={getEntities(currentLevel, currentPaddleSkin, currentBallSkin)}
             running={running && !paused && !win && !go && !showShop}
             onEvent={onEvent}
           />
@@ -895,12 +963,54 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
                 </TouchableOpacity>
               </View>
 
+              <View style={styles.settingsGroup}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>PRIVACY POLICY</Text>
+                  <Text style={styles.settingSub}>Read our terms and data policy</Text>
+                </View>
+                <TouchableOpacity onPress={openPrivacyPolicy} style={styles.settingLinkBtn}>
+                  <Text style={styles.linkText}>READ</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.closeSettingsBtn}>
                 <Text style={styles.closeSettingsText}>DONE</Text>
               </TouchableOpacity>
+
+              <Text style={styles.brandingAttribution}>DEVELOPED BY LIMNERS</Text>
             </View>
           </View>
         )}
+
+        
+        {/* PRIVACY CONSENT MODAL */}
+        <Modal
+          visible={!privacyAccepted}
+          transparent={true}
+          animationType="fade"
+          hardwareAccelerated={true}
+        >
+          <View style={styles.privacyModalOverlay}>
+            <View style={styles.privacyModalCard}>
+              <View style={styles.privacyModalLogo}>
+                <Text style={styles.privacyModalLogoIcon}>🚀</Text>
+              </View>
+              <Text style={styles.privacyModalTitle}>READY TO PLAY?</Text>
+              <Text style={styles.privacyModalText}>
+                By playing <Text style={{ color: '#00E5FF', fontWeight: '900' }}>BRICK STRIKE</Text>, you agree to our privacy policy. 
+                We use basic analytics for high scores and Google AdMob for ads.
+              </Text>
+              
+              <TouchableOpacity onPress={openPrivacyPolicy} style={styles.privacyModalLink}>
+                <Text style={styles.privacyModalLinkText}>READ PRIVACY POLICY</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handleAcceptPrivacy} style={styles.privacyModalBtn}>
+                <Text style={styles.privacyModalBtnText}>ACCEPT & START</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Neon Game Over / Win Overlay */}
         {(go || win) && (
@@ -963,19 +1073,22 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
             starBalance={starBalance}
             unlockedThemes={unlockedThemes}
             currentTheme={currentTheme}
+            unlockedSkins={unlockedSkins}
+            currentPaddleSkin={currentPaddleSkin}
+            currentBallSkin={currentBallSkin}
             onClose={() => setShowShop(false)}
             onBuy={handleBuy}
             onEquipTheme={(themeId) => {
               setCurrentTheme(themeId);
-              // Apply immediately to running game
               if (gameEngineRef.current) {
                 const state = gameEngineRef.current.state;
                 if (state?.entities?.paddle) {
                   state.entities.paddle.themeId = themeId;
                 }
               }
-              saveProgress(unlockedLevels, highScores, { stars: starBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme: themeId });
+              saveProgress(unlockedLevels, highScores, { stars: starBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme: themeId, unlockedSkins, currentPaddleSkin, currentBallSkin });
             }}
+            onEquipSkin={handleEquipSkin}
           />
         )}
 
@@ -1653,4 +1766,94 @@ const styles = StyleSheet.create({
     opacity: 0.3,
   },
   resetText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+
+  // ── Privacy & Branding Styles ───────────
+  settingLinkBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#333',
+    minWidth: 90,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  brandingAttribution: {
+    marginTop: 20,
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  privacyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  privacyModalCard: {
+    width: '100%',
+    backgroundColor: '#16171D',
+    borderRadius: 30,
+    padding: 30,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+  },
+  privacyModalLogo: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#00E5FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  privacyModalLogoIcon: {
+    fontSize: 32,
+  },
+  privacyModalTitle: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 15,
+  },
+  privacyModalText: {
+    color: '#CCC',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  privacyModalLink: {
+    paddingVertical: 10,
+    marginBottom: 20,
+  },
+  privacyModalLinkText: {
+    color: '#00E5FF',
+    fontSize: 13,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
+  },
+  privacyModalBtn: {
+    width: '100%',
+    backgroundColor: '#FFF',
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  privacyModalBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
+  },
 });

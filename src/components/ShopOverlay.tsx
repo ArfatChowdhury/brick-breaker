@@ -17,7 +17,7 @@ interface ShopItem {
   name: string;
   icon: string;
   cost: number;
-  type: 'WEAPON' | 'THEME' | 'AD';
+  type: 'WEAPON' | 'THEME' | 'AD' | 'SKIN_BALL' | 'SKIN_PADDLE';
   description: string;
 }
 
@@ -27,6 +27,22 @@ const SHOP_ITEMS: ShopItem[] = [
   { id: 'theme_neon', name: 'NEON THEME', icon: '⚡', cost: 25, type: 'THEME', description: 'Glow-in-the-dark paddle' },
   { id: 'theme_inferno', name: 'INFERNO', icon: '🔥', cost: 50, type: 'THEME', description: 'Molten lava style' },
   { id: 'ad_reward', name: 'FREE STARS', icon: '📺', cost: 0, type: 'AD', description: 'Watch ad to get +5 Stars' },
+  
+  // PADDLE SKINS
+  { id: 'PADDLE_US', name: 'USA PADDLE', icon: '🇺🇸', cost: 50, type: 'SKIN_PADDLE', description: 'Stars & Stripes paddle skin' },
+  { id: 'PADDLE_BR', name: 'BRAZIL PADDLE', icon: '🇧🇷', cost: 50, type: 'SKIN_PADDLE', description: 'Green & Gold paddle skin' },
+  { id: 'PADDLE_IN', name: 'INDIA PADDLE', icon: '🇮🇳', cost: 50, type: 'SKIN_PADDLE', description: 'Saffron & Green paddle skin' },
+  { id: 'PADDLE_GB', name: 'UK PADDLE', icon: '🇬🇧', cost: 50, type: 'SKIN_PADDLE', description: 'Union Jack paddle skin' },
+  { id: 'PADDLE_BD', name: 'BD PADDLE', icon: '🇧🇩', cost: 50, type: 'SKIN_PADDLE', description: 'Green & Red paddle skin' },
+  { id: 'PADDLE_JP', name: 'JAPAN PADDLE', icon: '🇯🇵', cost: 50, type: 'SKIN_PADDLE', description: 'Rising Sun paddle skin' },
+
+  // BALL SKINS
+  { id: 'BALL_US', name: 'USA BALL', icon: '🏀', cost: 50, type: 'SKIN_BALL', description: 'Stars & Stripes ball skin' },
+  { id: 'BALL_BR', name: 'BRAZIL BALL', icon: '⚽', cost: 50, type: 'SKIN_BALL', description: 'Green & Gold ball skin' },
+  { id: 'BALL_IN', name: 'INDIA BALL', icon: '🟠', cost: 50, type: 'SKIN_BALL', description: 'Saffron & Green ball skin' },
+  { id: 'BALL_GB', name: 'UK BALL', icon: '🔴', cost: 50, type: 'SKIN_BALL', description: 'Union Jack ball skin' },
+  { id: 'BALL_BD', name: 'BD BALL', icon: '🟢', cost: 50, type: 'SKIN_BALL', description: 'Green & Red ball skin' },
+  { id: 'BALL_JP', name: 'JAPAN BALL', icon: '⚪', cost: 50, type: 'SKIN_BALL', description: 'Rising Sun ball skin' },
 ];
 
 interface ShopOverlayProps {
@@ -34,8 +50,12 @@ interface ShopOverlayProps {
   onClose: () => void;
   onBuy: (item: ShopItem) => void;
   onEquipTheme: (themeId: string) => void;
+  onEquipSkin: (type: 'BALL' | 'PADDLE', skinId: string | null) => void;
   unlockedThemes: string[];
   currentTheme: string;
+  unlockedSkins: string[];
+  currentPaddleSkin: string | null;
+  currentBallSkin: string | null;
 }
 
 const ShopOverlay: React.FC<ShopOverlayProps> = ({ 
@@ -43,8 +63,12 @@ const ShopOverlay: React.FC<ShopOverlayProps> = ({
   onClose, 
   onBuy,
   onEquipTheme,
+  onEquipSkin,
   unlockedThemes,
   currentTheme,
+  unlockedSkins,
+  currentPaddleSkin,
+  currentBallSkin,
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -79,15 +103,35 @@ const ShopOverlay: React.FC<ShopOverlayProps> = ({
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           {SHOP_ITEMS.map((item) => {
             const isTheme = item.type === 'THEME';
-            const isUnlocked = isTheme && unlockedThemes.includes(item.id);
-            const isEquipped = currentTheme === item.id;
+            const isSkin = item.type === 'SKIN_BALL' || item.type === 'SKIN_PADDLE';
+            const isUnlocked = isTheme ? unlockedThemes.includes(item.id) : (isSkin ? unlockedSkins.includes(item.id) : false);
+            
+            let isEquipped = false;
+            if (isTheme) isEquipped = currentTheme === item.id;
+            else if (item.type === 'SKIN_PADDLE') {
+              const iso = item.id.replace('PADDLE_', '');
+              isEquipped = currentPaddleSkin === iso;
+            } else if (item.type === 'SKIN_BALL') {
+              const iso = item.id.replace('BALL_', '');
+              isEquipped = currentBallSkin === iso;
+            }
+
             const canAfford = starBalance >= item.cost || item.type === 'AD';
 
             const handlePress = () => {
               if (isTheme && isUnlocked) {
-                // Already owned: just equip it
                 if (!isEquipped) onEquipTheme(item.id);
-              } else if (canAfford && !isUnlocked) {
+              } else if (isSkin && isUnlocked) {
+                if (!isEquipped) {
+                  const type = item.type === 'SKIN_BALL' ? 'BALL' : 'PADDLE';
+                  const iso = item.id.replace(`${type}_`, '');
+                  onEquipSkin(type, iso);
+                } else {
+                  // If already equipped, clicking again un-equips to "Classic"
+                  const type = item.type === 'SKIN_BALL' ? 'BALL' : 'PADDLE';
+                  onEquipSkin(type, null);
+                }
+              } else if (canAfford && !isUnlocked && item.type !== 'AD') {
                 onBuy(item);
               } else if (item.type === 'AD') {
                 onBuy(item);

@@ -20,19 +20,17 @@ export const BRICK_COLS = 14;
 export const BRICK_HEIGHT = 15;
 export const BRICK_WIDTH = (SCREEN_WIDTH - 40) / BRICK_COLS;
 
-export const getEntities = (levelIndex = 0) => {
+export const getEntities = (levelIndex = 0, paddleSkin: string | null = null, ballSkin: string | null = null) => {
   const level = FLAG_LEVELS[levelIndex] || FLAG_LEVELS[0];
   
-  // 1. Dynamic Grid Layout
-  // Force bricks to take up the full width minus a tiny margin (4px)
   const MIN_BRICK_WIDTH = 18; // px
   const dynamicCols = Math.floor((SCREEN_WIDTH - 4) / MIN_BRICK_WIDTH);
   
   const brickRows = level.gridRows ?? BRICK_ROWS;
-  const brickCols = dynamicCols; // Ignore level.gridCols, force full flush width
+  const brickCols = dynamicCols;
   
   const brickWidth = (SCREEN_WIDTH - 4) / brickCols;
-  const brickHeight = brickWidth * 0.8; // Maintain 5:4 aspect ratio
+  const brickHeight = brickWidth * 0.8;
 
   const paddleMultiplier = level.paddleSizeMultiplier ?? 1.0;
   const speedScale = level.initialBallSpeed ? level.initialBallSpeed / 8.6 : 1.0;
@@ -54,23 +52,27 @@ export const getEntities = (levelIndex = 0) => {
       maxSpeed: 22,
       trapRelocations: 0,
       startTime: Date.now(),
-      starThresholds: level.starThresholds ?? [90, 120], // Default thresholds
+      starThresholds: level.starThresholds ?? [90, 120],
       renderer: ScoreBoard,
     },
     paddle: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.85],
       size: [PADDLE_WIDTH * paddleMultiplier, PADDLE_HEIGHT],
       themeId: 'theme_classic',
+      flagSkin: paddleSkin,
       renderer: Paddle,
     },
     ball_0: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50],
       velocity: [5 * speedScale, -7 * speedScale],
       radius: BALL_RADIUS * paddleMultiplier,
+      flagSkin: ballSkin,
       renderer: Ball,
       trail: [],
     },
   };
+
+
 
   // Generate Flag Bricks
   for (let r = 0; r < brickRows; r++) {

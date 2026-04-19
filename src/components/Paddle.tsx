@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ViewStyle, Animated } from 'react-native';
+import FlagMiniPreview from './FlagMiniPreview';
 
 interface PaddleProps {
   size: [number, number];
@@ -10,6 +11,7 @@ interface PaddleProps {
   weaponMode?: 'NORMAL' | 'AIM' | 'MINE';
   recoil?: number;
   themeId?: string;
+  flagSkin?: string | null;
 }
 
 const Paddle: React.FC<PaddleProps> = ({ 
@@ -20,7 +22,8 @@ const Paddle: React.FC<PaddleProps> = ({
   flash = 0, 
   weaponMode = 'NORMAL',
   recoil = 0,
-  themeId = 'theme_classic'
+  themeId = 'theme_classic',
+  flagSkin = null
 }) => {
   const width = size[0];
   const height = size[1];
@@ -110,8 +113,15 @@ const Paddle: React.FC<PaddleProps> = ({
   );
 
   return (
-    <View style={baseStyle}>
-      {/* Glossy Highlight for Cartoon effect */}
+      <View style={baseStyle}>
+        {/* Flag Skin Background */}
+        {flagSkin && (
+          <View style={[StyleSheet.absoluteFillObject, { borderRadius: 8, overflow: 'hidden' }]}>
+            <FlagMiniPreview isoCode={flagSkin} />
+          </View>
+        )}
+
+        {/* Glossy Highlight for Cartoon effect */}
       <View style={[
         styles.gloss, 
         { 

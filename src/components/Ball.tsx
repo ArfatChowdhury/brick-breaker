@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
+import FlagMiniPreview from './FlagMiniPreview';
 
 interface BallProps {
   radius: number;
@@ -7,9 +8,12 @@ interface BallProps {
   color?: string;
   trail?: [number, number][];
   isFire?: boolean;
+  flagSkin?: string | null;
 }
 
-const Ball: React.FC<BallProps> = ({ radius, position, color = '#FFD54F', trail, isFire }) => {
+const Ball: React.FC<BallProps> = ({ 
+  radius, position, color = '#FFD54F', trail, isFire, flagSkin = null 
+}) => {
   const x = position[0] - radius;
   const y = position[1] - radius;
 
@@ -52,6 +56,13 @@ const Ball: React.FC<BallProps> = ({ radius, position, color = '#FFD54F', trail,
 
       {/* Main Ball Body */}
       <View style={baseStyle}>
+          {/* Flag Skin Background */}
+          {flagSkin && (
+            <View style={[StyleSheet.absoluteFillObject, { borderRadius: radius, overflow: 'hidden' }]}>
+              <FlagMiniPreview isoCode={flagSkin} />
+            </View>
+          )}
+
           {/* Main Gloss Highlight */}
           <View style={[styles.gloss, { borderRadius: radius }]} />
           
