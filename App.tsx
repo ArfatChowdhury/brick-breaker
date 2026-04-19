@@ -23,6 +23,7 @@ import WeaponSystem from './src/systems/WeaponSystem';
 import WeaponBar from './src/components/WeaponBar';
 import Ball from './src/components/Ball';
 import Particle from './src/components/Particle';
+import PowerUpComponent from './src/components/PowerUp';
 import FlagMiniPreview from './src/components/FlagMiniPreview';
 import { getFlagIcon } from './src/utils/FlagMapper';
 import ShopOverlay from './src/components/ShopOverlay';
@@ -102,14 +103,51 @@ export default function App() {
   const shakeAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const introAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Native Physics Subscription ──
-  useNativePhysics(({ balls, ballCount, deadBricks, events }) => {
-    const ents = gameEngineRef.current?.state?.entities;
-    if (!ents) return;
+  const lastNativeUpdate = useRef<any>(null);
+  const lastFireMode = useRef(false);
+  const lastPaddleX = useRef(0);
+
+  // Stable ref to onEvent so NativePhysicsSync never captures a stale closure
+  const onEventRef = useRef<(e: any) => void>(null as any);
+
+  // Sync Waiting State (Only on change)
+  useEffect(() => {
+    NativePhysics.setWaitingState(waitingToStart);
+  }, [waitingToStart]);
+
+  // ── Native Physics Data Capture ──
+  useNativePhysics((data) => {
+    lastNativeUpdate.current = data;
+  });
+
+  // ── Native Sync System (The bridge between Kotlin and GameEngine) ──
+  // Wrapped in useRef so GameEngine always receives the SAME function identity.
+  // Without this, every React re-render swaps in a new function, destabilising the engine.
+  const NativePhysicsSyncFn = useRef((ents: any, { screen }: any) => {
+    const data = lastNativeUpdate.current;
+    if (!data) return ents;
+    const { balls, ballCount, deadBricks, events } = data;
 
     // 0. Sync Persistent State to Native
     const fireActive = !!(ents.scoreBoard?.powerUpState?.FIRE && Date.now() < ents.scoreBoard.powerUpState.FIRE);
-    NativePhysics.setFireMode(fireActive);
+    if (lastFireMode.current !== fireActive) {
+        lastFireMode.current = fireActive;
+        NativePhysics.setFireMode(fireActive);
+    }
+
+    // 0a. Paddle Lerp & Sync
+    if (ents.paddle && ents.paddle.targetX !== undefined) {
+        const p = ents.paddle;
+        const LERP_SPEED = 24.0;
+        const delta = 16;
+        const t = Math.min(1, (LERP_SPEED * delta) / 1000);
+        p.position[0] += (p.targetX - p.position[0]) * t;
+        
+        if (Math.abs((lastPaddleX.current || 0) - p.position[0]) > 0.1) {
+            lastPaddleX.current = p.position[0];
+            NativePhysics.movePaddle(p.position[0]);
+        }
+    }
 
     // 1. Update ball positions
     for (let i = 0; i < ballCount; i++) {
@@ -149,7 +187,7 @@ export default function App() {
 
     // 3. Handle game events
     for (const ev of events) {
-        if (ev === 'lose-life') onEvent({ type: 'lose-life' });
+        if (ev === 'lose-life') onEventRef.current?.({ type: 'lose-life' });
         if (ev === 'wall-hit') playSound('pickup_coin');
         if (ev === 'paddle-hit') {
             playSound('tink');
@@ -163,7 +201,6 @@ export default function App() {
             const [, brickId, color] = ev.split(':');
             playSound('explosion');
             const pos = ents[brickId]?.position || [SCREEN_WIDTH/2, 200];
-            // VFX
             triggerHaptic('impactLight');
             for (let i = 0; i < 3; i++) {
                 const pid = `p_${Date.now()}_${i}_${Math.random()}`;
@@ -176,17 +213,16 @@ export default function App() {
                     renderer: Particle,
                 };
             }
-            // Logic for power-up spawn
             if (Math.random() < 0.18) {
                 const types = ['WIDE', 'MULTI', 'PLUS3', 'FIRE', 'LIFE'];
                 const type = types[Math.floor(Math.random() * types.length)] as any;
                 const id = `powerup_${Date.now()}_${Math.random()}`;
-                ents[id] = { position: [...pos], size: [30, 30], type, renderer: PowerUp };
+                ents[id] = { position: [...pos], size: [30, 30], type, renderer: PowerUpComponent };
             }
         }
     }
 
-    // 4. Update non-physics entities
+    // 4. Update non-physics entities (Powerups, Particles, Weapons)
     Object.keys(ents).forEach(k => {
         if (k.startsWith('powerup_')) {
             const pu = ents[k];
@@ -212,37 +248,6 @@ export default function App() {
             p.position[1] += p.velocity[1];
             p.opacity -= 0.1;
             if (p.opacity <= 0) delete ents[k];
-        } else if (k.startsWith('mine_')) {
-            const mine = ents[k];
-            const targetBrick = ents[mine.attachedTo];
-            const now = Date.now();
-            
-            // 1. Move to brick (Animation)
-            if (targetBrick && targetBrick.status !== false) {
-                const dx = targetBrick.position[0] - mine.position[0];
-                const dy = targetBrick.position[1] - mine.position[1];
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist > 5) {
-                    mine.position[0] += dx * 0.2;
-                    mine.position[1] += dy * 0.2;
-                } else {
-                    const offset = mine.side === 'left' ? -8 : 8;
-                    mine.position = [targetBrick.position[0] + offset, targetBrick.position[1]];
-                }
-            }
-
-            // 2. Explode when timer expires
-            if (mine.expiresAt && now >= mine.expiresAt) {
-                delete ents[k];
-                playSound('explosion_blast');
-                NativePhysics.triggerExplosion(mine.position[0], mine.position[1], 150.0);
-                triggerHaptic('notificationError');
-                if (ents.scoreBoard) ents.scoreBoard.shake += 15;
-            } else if (targetBrick && targetBrick.status === false) {
-                // If the brick was destroyed by a ball, mine should explode early
-                delete ents[k];
-                NativePhysics.triggerExplosion(mine.position[0], mine.position[1], 150.0);
-            }
         } else if (k.startsWith('missile_')) {
             const m = ents[k];
             const dx = m.target[0] - m.position[0];
@@ -264,9 +269,13 @@ export default function App() {
     // 5. Win Check
     const remaining = Object.keys(ents).filter(k => k.startsWith('brick_') && ents[k].status).length;
     if (remaining === 0 && ents.scoreBoard && running) {
-        onEvent({ type: 'win', score: ents.scoreBoard.score, timeTaken: Math.floor((Date.now() - ents.scoreBoard.startTime)/1000), maxScore: ents.scoreBoard.maxScore });
+        onEventRef.current?.({ type: 'win', score: ents.scoreBoard.score, timeTaken: Math.floor((Date.now() - ents.scoreBoard.startTime)/1000), maxScore: ents.scoreBoard.maxScore });
     }
-  });
+
+    // Clear current data after processing
+    lastNativeUpdate.current = null;
+    return ents;
+  }).current;
 
   useEffect(() => {
     if (waitingToStart && !paused) {
@@ -432,6 +441,9 @@ try {
     }
   };
 
+  // Keep the stable ref always current — runs after every render so the
+  // system function never holds a stale closure over state-dependent callbacks.
+  onEventRef.current = onEvent;
 
   const triggerShake = (intensity: number) => {
     const val = intensity * 0.8;
@@ -540,8 +552,10 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
             color: b.color,
           };
         });
-      
-      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25).then(() => {
+      const initialPaddleX = ents.paddle?.position[0] || SCREEN_WIDTH / 2;
+      if (ents.paddle) ents.paddle.targetX = initialPaddleX;
+
+      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25, initialPaddleX).then(() => {
         NativePhysics.start();
       });
       
@@ -939,7 +953,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
           <GameEngine
             ref={gameEngineRef}
             style={styles.gameContainer}
-            systems={[MovePaddle, WeaponSystem]}
+            systems={[NativePhysicsSyncFn, MovePaddle, WeaponSystem]}
             entities={getEntities(currentLevel, currentPaddleSkin, currentBallSkin)}
             running={running && !paused && !win && !go && !showShop}
             onEvent={onEvent}

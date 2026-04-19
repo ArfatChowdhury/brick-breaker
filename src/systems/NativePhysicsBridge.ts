@@ -23,9 +23,9 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 export const Physics = {
   /** Must be called once before any level starts */
-  init(bricks: BrickDef[], paddleWidth: number): Promise<boolean> {
+  init(bricks: BrickDef[], paddleWidth: number, paddleX: number): Promise<boolean> {
     PhysicsModule.setScreenSize(SCREEN_W, SCREEN_H);
-    return PhysicsModule.initGame(bricks, paddleWidth);
+    return PhysicsModule.initGame(bricks, paddleWidth, paddleX);
   },
 
   /** Tap-to-launch */
@@ -48,6 +48,10 @@ export const Physics = {
   },
 
   resetPaddleWidth() { PhysicsModule.resetPaddleWidth(); },
+
+  setWaitingState(waiting: boolean) {
+    PhysicsModule.setWaitingState(waiting);
+  },
 
   start() { PhysicsModule.startLoop(); },
   stop()  { PhysicsModule.stopLoop(); },
