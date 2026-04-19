@@ -39,6 +39,14 @@ export const Physics = {
     PhysicsModule.applyPowerUp(type);
   },
 
+  setFireMode(active: boolean) {
+    PhysicsModule.setFireMode(active);
+  },
+
+  triggerExplosion(x: number, y: number, radius: number) {
+    PhysicsModule.triggerExplosion(x, y, radius);
+  },
+
   resetPaddleWidth() { PhysicsModule.resetPaddleWidth(); },
 
   start() { PhysicsModule.startLoop(); },

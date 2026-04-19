@@ -1,4 +1,5 @@
 import { Dimensions } from 'react-native';
+import { Physics as NativePhysics } from './NativePhysicsBridge';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -9,9 +10,6 @@ const MovePaddle = (entities: any, { touches }: any) => {
   touches
     .filter((t: any) => t.type === 'move' || t.type === 'press' || t.type === 'start')
     .forEach((t: any) => {
-      // FIX: Only move paddle if touch is in the bottom 35% of the screen
-      // OR if we are in normal mode and it's a drag. 
-      // This prevents "teleporting" when tapping specialized weapon targets (Missiles/Mines)
       const touchY = t.event.pageY;
       const isBottomTouch = touchY > SCREEN_HEIGHT * 0.65;
 
@@ -24,6 +22,7 @@ const MovePaddle = (entities: any, { touches }: any) => {
         if (newX > SCREEN_WIDTH - halfWidth) newX = SCREEN_WIDTH - halfWidth;
         
         paddle.targetX = newX;
+        NativePhysics.movePaddle(newX);
       }
     });
 

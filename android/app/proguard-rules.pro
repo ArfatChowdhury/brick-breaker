@@ -8,3 +8,6 @@
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
 # Add any project specific keep options here:
+
+# Ensure native physics module remains accessible to JS bridge in release builds
+-keep class com.brickstrike.** { *; }

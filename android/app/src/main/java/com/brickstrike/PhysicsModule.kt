@@ -41,8 +41,6 @@ class PhysicsModule(private val reactContext: ReactApplicationContext)
     private var loopThread: Thread? = null
     private val FRAME_MS  = 16L  // ~60 fps
 
-    private var fireMode  = false
-
     // ── Brick Data Class ───────────────────────────────────────────────────────
     data class BrickData(
         val id: String,
@@ -105,31 +103,6 @@ class PhysicsModule(private val reactContext: ReactApplicationContext)
     fun movePaddle(x: Double) {
         val halfW = paddle[2] / 2
         paddle[0] = x.coerceIn(halfW, SCREEN_W - halfW)
-    }
-
-    @ReactMethod
-    fun setFireMode(active: Boolean) {
-        fireMode = active
-    }
-
-    /** Triggered from JS (Mines / Rockets) */
-    @ReactMethod
-    fun triggerExplosion(x: Double, y: Double, radius: Double) {
-        synchronized(bricks) {
-            val deadIds = mutableListOf<String>()
-            for (brick in bricks) {
-                if (!brick.active || brick.type == "stone") continue
-                val dist = sqrt((brick.x - x).pow(2) + (brick.y - y).pow(2))
-                if (dist < radius) {
-                    brick.active = false
-                    deadIds.add(brick.id)
-                }
-            }
-            if (deadIds.isNotEmpty()) {
-                // We'll catch these in the next tick's update
-                // Or we can manually emit an event if needed, but tick() is fine
-            }
-        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -273,23 +246,11 @@ class PhysicsModule(private val reactContext: ReactApplicationContext)
 
                     // Reflect
                     val spd = sqrt(ball[2] * ball[2] + ball[3] * ball[3])
-                    
-                    if (fireMode) {
-                        // In Fire Mode, ball pushes through — add a slight nudge
-                        val nudge = 1.6
-                        when (hitSide) {
-                            "LEFT"   -> ball[0] = brick.x - bHW - r - nudge
-                            "RIGHT"  -> ball[0] = brick.x + bHW + r + nudge
-                            "TOP"    -> ball[1] = brick.y - bHH - r - nudge
-                            "BOTTOM" -> ball[1] = brick.y + bHH + r + nudge
-                        }
-                    } else {
-                        if (overlapX < overlapY) ball[2] *= -1 else ball[3] *= -1
-                        if (abs(ball[3]) < MIN_VY) {
-                            ball[3] = if (ball[3] < 0) -MIN_VY else MIN_VY
-                            val vx2 = sqrt(max(1.0, spd * spd - MIN_VY * MIN_VY))
-                            ball[2] = if (ball[2] < 0) -vx2 else vx2
-                        }
+                    if (overlapX < overlapY) ball[2] *= -1 else ball[3] *= -1
+                    if (abs(ball[3]) < MIN_VY) {
+                        ball[3] = if (ball[3] < 0) -MIN_VY else MIN_VY
+                        val vx2 = sqrt(max(1.0, spd * spd - MIN_VY * MIN_VY))
+                        ball[2] = if (ball[2] < 0) -vx2 else vx2
                     }
 
                     // Damage
@@ -303,7 +264,7 @@ class PhysicsModule(private val reactContext: ReactApplicationContext)
                     }
 
                     hitBrick = true
-                    if (!fireMode) break  // one brick per sub-step UNLESS in fire mode
+                    break  // one brick per sub-step
                 }
                 if (hitBrick) break
             }

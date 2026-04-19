@@ -1,13 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  StatusBar, StyleSheet, View, Text, TouchableOpacity,
-  Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus,
-  Linking, Modal
-} from 'react-native';
+import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus, Linking, Modal, NativeModules, NativeEventEmitter } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
 import MovePaddle from './src/systems/MovePaddle';
 import Physics from './src/systems/Physics';
+import { Physics as NativePhysics, useNativePhysics } from './src/systems/NativePhysicsBridge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FLAG_LEVELS } from './src/levels';
 import mobileAds, { 
@@ -24,6 +21,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
 import WeaponSystem from './src/systems/WeaponSystem';
 import WeaponBar from './src/components/WeaponBar';
+import Ball from './src/components/Ball';
+import Particle from './src/components/Particle';
 import FlagMiniPreview from './src/components/FlagMiniPreview';
 import { getFlagIcon } from './src/utils/FlagMapper';
 import ShopOverlay from './src/components/ShopOverlay';
@@ -60,7 +59,7 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(true);
   const [currentLevel, setCurrentLevel] = useState(0);
   const [unlockedLevels, setUnlockedLevels] = useState([0]);
-  const [highScores, setHighScores] = useState<{ [key: string]: number }>({});
+  const [highScores, setHighScores] = useState<{ [key: string]: any }>({});
   const [go, setGo] = useState(false);
   const [win, setWin] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -102,6 +101,172 @@ export default function App() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shakeAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const introAnim = useRef(new Animated.Value(0)).current;
+
+  // ── Native Physics Subscription ──
+  useNativePhysics(({ balls, ballCount, deadBricks, events }) => {
+    const ents = gameEngineRef.current?.state?.entities;
+    if (!ents) return;
+
+    // 0. Sync Persistent State to Native
+    const fireActive = !!(ents.scoreBoard?.powerUpState?.FIRE && Date.now() < ents.scoreBoard.powerUpState.FIRE);
+    NativePhysics.setFireMode(fireActive);
+
+    // 1. Update ball positions
+    for (let i = 0; i < ballCount; i++) {
+        const key = `ball_${i}`;
+        if (ents[key]) {
+            ents[key].position[0] = balls[i * 2];
+            ents[key].position[1] = balls[i * 2 + 1];
+            ents[key].isFire = fireActive;
+        } else {
+            ents[key] = {
+                position: [balls[i * 2], balls[i * 2 + 1]],
+                velocity: [0, 0],
+                radius: ents.ball_0?.radius || 10,
+                renderer: Ball,
+                flagSkin: currentBallSkin,
+                isFire: fireActive,
+                trail: []
+            };
+        }
+    }
+
+    // 2. Remove destroyed bricks & Update Score
+    if (deadBricks.length > 0) {
+        for (const id of deadBricks) {
+            const brick = ents[id];
+            if (brick && brick.status !== false) {
+                brick.status = false;
+                if (ents.scoreBoard) {
+                    ents.scoreBoard.streak += 1;
+                    ents.scoreBoard.multiplier = 1 + Math.floor(ents.scoreBoard.streak / 6);
+                    ents.scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * ents.scoreBoard.multiplier;
+                    ents.scoreBoard.bricksBroken += 1;
+                }
+            }
+        }
+    }
+
+    // 3. Handle game events
+    for (const ev of events) {
+        if (ev === 'lose-life') onEvent({ type: 'lose-life' });
+        if (ev === 'wall-hit') playSound('pickup_coin');
+        if (ev === 'paddle-hit') {
+            playSound('tink');
+            if (ents.paddle) ents.paddle.flash = 6;
+            if (ents.scoreBoard) {
+                ents.scoreBoard.streak = 0;
+                ents.scoreBoard.multiplier = 1;
+            }
+        }
+        if (ev.startsWith('brick-break')) {
+            const [, brickId, color] = ev.split(':');
+            playSound('explosion');
+            const pos = ents[brickId]?.position || [SCREEN_WIDTH/2, 200];
+            // VFX
+            triggerHaptic('impactLight');
+            for (let i = 0; i < 3; i++) {
+                const pid = `p_${Date.now()}_${i}_${Math.random()}`;
+                ents[pid] = {
+                    position: [...pos],
+                    velocity: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6],
+                    size: 3 + Math.random() * 2,
+                    color: color || '#FFFFFF',
+                    opacity: 1,
+                    renderer: Particle,
+                };
+            }
+            // Logic for power-up spawn
+            if (Math.random() < 0.18) {
+                const types = ['WIDE', 'MULTI', 'PLUS3', 'FIRE', 'LIFE'];
+                const type = types[Math.floor(Math.random() * types.length)] as any;
+                const id = `powerup_${Date.now()}_${Math.random()}`;
+                ents[id] = { position: [...pos], size: [30, 30], type, renderer: PowerUp };
+            }
+        }
+    }
+
+    // 4. Update non-physics entities
+    Object.keys(ents).forEach(k => {
+        if (k.startsWith('powerup_')) {
+            const pu = ents[k];
+            pu.position[1] += 3;
+            const dx = Math.abs(pu.position[0] - ents.paddle?.position[0]);
+            const dy = Math.abs(pu.position[1] - ents.paddle?.position[1]);
+            if (dx < ents.paddle?.size[0] / 2 && dy < ents.paddle?.size[1] / 2) {
+                if (pu.type === 'WIDE' || pu.type === 'MULTI' || pu.type === 'PLUS3') {
+                    NativePhysics.applyPowerUp(pu.type);
+                } else if (pu.type === 'FIRE') {
+                    if (ents.scoreBoard) ents.scoreBoard.powerUpState.FIRE = Date.now() + 10000;
+                } else if (pu.type === 'LIFE') {
+                    if (ents.scoreBoard && ents.scoreBoard.lives < 5) ents.scoreBoard.lives += 1;
+                }
+                delete ents[k];
+                playSound('power_up');
+                triggerHaptic('impactMedium');
+            }
+            if (pu.position[1] > SCREEN_HEIGHT) delete ents[k];
+        } else if (k.startsWith('p_')) {
+            const p = ents[k];
+            p.position[0] += p.velocity[0];
+            p.position[1] += p.velocity[1];
+            p.opacity -= 0.1;
+            if (p.opacity <= 0) delete ents[k];
+        } else if (k.startsWith('mine_')) {
+            const mine = ents[k];
+            const targetBrick = ents[mine.attachedTo];
+            const now = Date.now();
+            
+            // 1. Move to brick (Animation)
+            if (targetBrick && targetBrick.status !== false) {
+                const dx = targetBrick.position[0] - mine.position[0];
+                const dy = targetBrick.position[1] - mine.position[1];
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 5) {
+                    mine.position[0] += dx * 0.2;
+                    mine.position[1] += dy * 0.2;
+                } else {
+                    const offset = mine.side === 'left' ? -8 : 8;
+                    mine.position = [targetBrick.position[0] + offset, targetBrick.position[1]];
+                }
+            }
+
+            // 2. Explode when timer expires
+            if (mine.expiresAt && now >= mine.expiresAt) {
+                delete ents[k];
+                playSound('explosion_blast');
+                NativePhysics.triggerExplosion(mine.position[0], mine.position[1], 150.0);
+                triggerHaptic('notificationError');
+                if (ents.scoreBoard) ents.scoreBoard.shake += 15;
+            } else if (targetBrick && targetBrick.status === false) {
+                // If the brick was destroyed by a ball, mine should explode early
+                delete ents[k];
+                NativePhysics.triggerExplosion(mine.position[0], mine.position[1], 150.0);
+            }
+        } else if (k.startsWith('missile_')) {
+            const m = ents[k];
+            const dx = m.target[0] - m.position[0];
+            const dy = m.target[1] - m.position[1];
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 25) {
+                 delete ents[k];
+                 playSound('explosion');
+                 NativePhysics.triggerExplosion(m.target[0], m.target[1], 75.0);
+                 triggerHaptic('impactHeavy');
+                 if (ents.scoreBoard) ents.scoreBoard.shake += 10;
+            } else {
+                m.position[0] += dx * 0.1;
+                m.position[1] += dy * 0.1;
+            }
+        }
+    });
+
+    // 5. Win Check
+    const remaining = Object.keys(ents).filter(k => k.startsWith('brick_') && ents[k].status).length;
+    if (remaining === 0 && ents.scoreBoard && running) {
+        onEvent({ type: 'win', score: ents.scoreBoard.score, timeTaken: Math.floor((Date.now() - ents.scoreBoard.startTime)/1000), maxScore: ents.scoreBoard.maxScore });
+    }
+  });
 
   useEffect(() => {
     if (waitingToStart && !paused) {
@@ -242,9 +407,11 @@ try {
     switch (e.type) {
       case 'game-over':
         stopSound('game_sfx');
+        NativePhysics.stop();
         setRunning(false); setGo(true); setCanRevive(true); break;
       case 'win':
         stopSound('game_sfx');
+        NativePhysics.stop();
         handleWin(e.score, e.timeTaken, e.maxScore); break;
       case 'lose-life':
         setWaitingToStart(true); break;
@@ -356,6 +523,27 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       ents.scoreBoard.mines = mineStock;
       if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
+
+      // Initialize Native Physics
+      const brickDefs = Object.keys(ents)
+        .filter(k => k.startsWith('brick_'))
+        .map(k => {
+          const b = ents[k];
+          return {
+            id: k,
+            x: b.position[0],
+            y: b.position[1],
+            w: b.size[0],
+            h: b.size[1],
+            hp: b.hp,
+            type: b.type,
+            color: b.color,
+          };
+        });
+      
+      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25).then(() => {
+        NativePhysics.start();
+      });
       
       // Trigger Level Intro
       introAnim.setValue(0);
@@ -373,6 +561,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       if (gameEngineRef.current && typeof gameEngineRef.current.dispatch === 'function') {
         setWaitingToStart(false);
         gameEngineRef.current.dispatch({ type: 'launch' });
+        NativePhysics.launch();
       }
     }
   };
@@ -401,6 +590,27 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       ents.scoreBoard.mines = mineStock;
       if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
+
+      // Initialize Native Physics
+      const brickDefs = Object.keys(ents)
+        .filter(k => k.startsWith('brick_'))
+        .map(k => {
+          const b = ents[k];
+          return {
+            id: k,
+            x: b.position[0],
+            y: b.position[1],
+            w: b.size[0],
+            h: b.size[1],
+            hp: b.hp,
+            type: b.type,
+            color: b.color,
+          };
+        });
+      
+      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25).then(() => {
+        NativePhysics.start();
+      });
     }
   };
 
@@ -466,6 +676,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
   const backToMenu = () => {
     stopSound('game_sfx');
     playSound('click');
+    NativePhysics.stop();
     setCanRevive(false);
     setShowMenu(true); setRunning(false); setWin(false); setGo(false); setPaused(false);
   };
@@ -603,6 +814,12 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       currentPaddleSkin: newPaddleSkin,
       currentBallSkin: newBallSkin,
     });
+
+    if (item.id === 'multi_3' || item.id === 'plus_3' || item.id === 'wide_paddle') {
+        const type = item.id === 'multi_3' ? 'MULTI' : (item.id === 'wide_paddle' ? 'WIDE' : 'PLUS3');
+        NativePhysics.applyPowerUp(type);
+    }
+
     triggerHaptic('notificationSuccess');
     playSound('blip_select');
   };
@@ -722,7 +939,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
           <GameEngine
             ref={gameEngineRef}
             style={styles.gameContainer}
-            systems={[MovePaddle, WeaponSystem, Physics]}
+            systems={[MovePaddle, WeaponSystem]}
             entities={getEntities(currentLevel, currentPaddleSkin, currentBallSkin)}
             running={running && !paused && !win && !go && !showShop}
             onEvent={onEvent}
@@ -1159,18 +1376,25 @@ const styles = StyleSheet.create({
   // ── In-Game HUD ────────────────────────────
   hudLevelName: {
     position: 'absolute',
-    bottom: 95, // Raised up to avoid overlapping Banner Ad
+    bottom: 95,
     left: 0, right: 0,
     alignItems: 'center',
     zIndex: 5,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00E5FF',
+    alignSelf: 'center', // Added for better centering
+    width: 200, // Added to give it some bulk
   },
-  gameBannerContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0, right: 0,
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 4,
+  hudLevelText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textAlign: 'center',
   },
   globalAdContainer: {
     position: 'absolute',
@@ -1179,13 +1403,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(10, 10, 15, 0.8)',
     zIndex: 5000,
-    paddingBottom: 2, // Slight lift
-  },
-  hudLevelText: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 2,
+    paddingBottom: 2,
   },
   pauseButton: {
     position: 'absolute',
@@ -1206,8 +1424,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
   },
-
-  // ── Serve Overlay ──────────────────────────
   serveOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -1241,19 +1457,56 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '700',
   },
-  hudLevelName: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#00E5FF',
-  },
-  hudLevelText: {
-    color: '#00E5FF',
-    fontSize: 10,
+  weaponInstructionText: {
+    color: '#FFEE58',
+    fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 1,
+    textAlign: 'center',
+    textShadowColor: '#000',
+    textShadowRadius: 4,
+  },
+  weaponInstructionOverlay: {
+    position: 'absolute',
+    top: 150,
+    left: 0, right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  introOverlay: {
+    position: 'absolute',
+    top: SCREEN_HEIGHT * 0.3,
+    left: 0, right: 0,
+    alignItems: 'center',
+    zIndex: 50,
+  },
+  introSub: {
+    color: '#00E5FF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 4,
+  },
+  introTitle: {
+    color: '#FFF',
+    fontSize: 48,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textShadowColor: '#00E5FF',
+    textShadowRadius: 15,
+  },
+  star: {
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 18,
+    marginHorizontal: 2,
+  },
+  starActive: {
+    color: '#FFEA00',
+    textShadowColor: '#FFEA00',
+    textShadowRadius: 8,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
   },
 
   // ── Neon Overlay Cards ───────────────────
