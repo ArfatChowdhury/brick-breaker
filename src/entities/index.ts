@@ -20,7 +20,7 @@ export const BRICK_COLS = 14;
 export const BRICK_HEIGHT = 15;
 export const BRICK_WIDTH = (SCREEN_WIDTH - 40) / BRICK_COLS;
 
-export const getEntities = (levelIndex = 0, paddleSkin: string | null = null, ballSkin: string | null = null) => {
+export const getEntities = (levelIndex = 0) => {
   const level = FLAG_LEVELS[levelIndex] || FLAG_LEVELS[0];
   
   const MIN_BRICK_WIDTH = 18; // px
@@ -59,14 +59,12 @@ export const getEntities = (levelIndex = 0, paddleSkin: string | null = null, ba
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.85],
       size: [PADDLE_WIDTH * paddleMultiplier, PADDLE_HEIGHT],
       themeId: 'theme_classic',
-      flagSkin: paddleSkin,
       renderer: Paddle,
     },
     ball_0: {
       position: [SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50],
       velocity: [5 * speedScale, -7 * speedScale],
       radius: BALL_RADIUS * paddleMultiplier,
-      flagSkin: ballSkin,
       renderer: Ball,
       trail: [],
     },

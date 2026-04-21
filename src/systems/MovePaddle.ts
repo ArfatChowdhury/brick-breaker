@@ -1,5 +1,5 @@
 import { Dimensions } from 'react-native';
-import { Physics as NativePhysics } from './NativePhysicsBridge';
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -22,7 +22,7 @@ const MovePaddle = (entities: any, { touches }: any) => {
         if (newX > SCREEN_WIDTH - halfWidth) newX = SCREEN_WIDTH - halfWidth;
         
         paddle.targetX = newX;
-        NativePhysics.movePaddle(newX);
+
       }
     });
 

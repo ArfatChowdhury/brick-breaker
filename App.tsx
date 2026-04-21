@@ -1,25 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus, Linking, Modal, NativeModules, NativeEventEmitter } from 'react-native';
+import { StatusBar, StyleSheet, View, Text, TouchableOpacity, Animated, Easing, ScrollView, Dimensions, AppState, AppStateStatus, Linking, Modal } from 'react-native';
 import { GameEngine } from 'react-native-game-engine';
 import { getEntities } from './src/entities';
 import MovePaddle from './src/systems/MovePaddle';
 import Physics from './src/systems/Physics';
-import { Physics as NativePhysics, useNativePhysics } from './src/systems/NativePhysicsBridge';
+import WeaponSystem from './src/systems/WeaponSystem';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FLAG_LEVELS } from './src/levels';
-import mobileAds, { 
-  BannerAd, 
-  BannerAdSize, 
-  TestIds, 
+import mobileAds, {
+  BannerAd,
+  BannerAdSize,
+  TestIds,
   InterstitialAd,
-  RewardedInterstitialAd, 
+  RewardedInterstitialAd,
   AdEventType,
-  RewardedAdEventType 
+  RewardedAdEventType
 } from 'react-native-google-mobile-ads';
 import { playSound, setSoundEnabled, stopSound } from './src/utils/audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { triggerHaptic } from './src/utils/haptics';
-import WeaponSystem from './src/systems/WeaponSystem';
 import WeaponBar from './src/components/WeaponBar';
 import Ball from './src/components/Ball';
 import Particle from './src/components/Particle';
@@ -69,7 +68,7 @@ export default function App() {
   const [totalPausedMs, setTotalPausedMs] = useState(0);
   const [weaponMode, setWeaponMode] = useState<'NORMAL' | 'AIM' | 'MINE'>('NORMAL');
   const [soundEnabled, setSoundEnabledState] = useState(true);
-  
+
   // Economy State (Lifetime)
   const [starBalance, setStarBalance] = useState(0);
   const [missileStock, setMissileStock] = useState(3);
@@ -79,22 +78,19 @@ export default function App() {
   const [weaponCounts, setWeaponCounts] = useState({ missiles: 3, mines: 3 });
   const [lastStarsEarned, setLastStarsEarned] = useState(0);
   const [finalTime, setFinalTime] = useState(0);
-  
-  // Skins State
-  const [currentPaddleSkin, setCurrentPaddleSkin] = useState<string | null>(null);
-  const [currentBallSkin, setCurrentBallSkin] = useState<string | null>(null);
-  const [unlockedSkins, setUnlockedSkins] = useState<string[]>([]);
-  
+
+
+
   const [showShop, setShowShop] = useState(false);
   const [isWatchingAd, setIsWatchingAd] = useState(false);
   const [adPurpose, setAdPurpose] = useState<'shop' | 'revive'>('shop');
   const [canRevive, setCanRevive] = useState(false);
   const [adsReady, setAdsReady] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(true); // Default to true while loading
- // Gate banner until AdMob is initialized
+  // Gate banner until AdMob is initialized
   const [showBranding, setShowBranding] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  
+
   const gameEngineRef = useRef<any>(null);
 
 
@@ -103,179 +99,9 @@ export default function App() {
   const shakeAnim = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const introAnim = useRef(new Animated.Value(0)).current;
 
-  const lastNativeUpdate = useRef<any>(null);
-  const lastFireMode = useRef(false);
-  const lastPaddleX = useRef(0);
 
-  // Stable ref to onEvent so NativePhysicsSync never captures a stale closure
-  const onEventRef = useRef<(e: any) => void>(null as any);
 
-  // Sync Waiting State (Only on change)
-  useEffect(() => {
-    NativePhysics.setWaitingState(waitingToStart);
-  }, [waitingToStart]);
 
-  // ── Native Physics Data Capture ──
-  useNativePhysics((data) => {
-    lastNativeUpdate.current = data;
-  });
-
-  // ── Native Sync System (The bridge between Kotlin and GameEngine) ──
-  // Wrapped in useRef so GameEngine always receives the SAME function identity.
-  // Without this, every React re-render swaps in a new function, destabilising the engine.
-  const NativePhysicsSyncFn = useRef((ents: any, { screen }: any) => {
-    const data = lastNativeUpdate.current;
-    if (!data) return ents;
-    const { balls, ballCount, deadBricks, events } = data;
-
-    // 0. Sync Persistent State to Native
-    const fireActive = !!(ents.scoreBoard?.powerUpState?.FIRE && Date.now() < ents.scoreBoard.powerUpState.FIRE);
-    if (lastFireMode.current !== fireActive) {
-        lastFireMode.current = fireActive;
-        NativePhysics.setFireMode(fireActive);
-    }
-
-    // 0a. Paddle Lerp & Sync
-    if (ents.paddle && ents.paddle.targetX !== undefined) {
-        const p = ents.paddle;
-        const LERP_SPEED = 24.0;
-        const delta = 16;
-        const t = Math.min(1, (LERP_SPEED * delta) / 1000);
-        p.position[0] += (p.targetX - p.position[0]) * t;
-        
-        if (Math.abs((lastPaddleX.current || 0) - p.position[0]) > 0.1) {
-            lastPaddleX.current = p.position[0];
-            NativePhysics.movePaddle(p.position[0]);
-        }
-    }
-
-    // 1. Update ball positions
-    for (let i = 0; i < ballCount; i++) {
-        const key = `ball_${i}`;
-        if (ents[key]) {
-            ents[key].position[0] = balls[i * 2];
-            ents[key].position[1] = balls[i * 2 + 1];
-            ents[key].isFire = fireActive;
-        } else {
-            ents[key] = {
-                position: [balls[i * 2], balls[i * 2 + 1]],
-                velocity: [0, 0],
-                radius: ents.ball_0?.radius || 10,
-                renderer: Ball,
-                flagSkin: currentBallSkin,
-                isFire: fireActive,
-                trail: []
-            };
-        }
-    }
-
-    // 2. Remove destroyed bricks & Update Score
-    if (deadBricks.length > 0) {
-        for (const id of deadBricks) {
-            const brick = ents[id];
-            if (brick && brick.status !== false) {
-                brick.status = false;
-                if (ents.scoreBoard) {
-                    ents.scoreBoard.streak += 1;
-                    ents.scoreBoard.multiplier = 1 + Math.floor(ents.scoreBoard.streak / 6);
-                    ents.scoreBoard.score += (brick.type === 'stone' ? 50 : 10) * ents.scoreBoard.multiplier;
-                    ents.scoreBoard.bricksBroken += 1;
-                }
-            }
-        }
-    }
-
-    // 3. Handle game events
-    for (const ev of events) {
-        if (ev === 'lose-life') onEventRef.current?.({ type: 'lose-life' });
-        if (ev === 'wall-hit') playSound('pickup_coin');
-        if (ev === 'paddle-hit') {
-            playSound('tink');
-            if (ents.paddle) ents.paddle.flash = 6;
-            if (ents.scoreBoard) {
-                ents.scoreBoard.streak = 0;
-                ents.scoreBoard.multiplier = 1;
-            }
-        }
-        if (ev.startsWith('brick-break')) {
-            const [, brickId, color] = ev.split(':');
-            playSound('explosion');
-            const pos = ents[brickId]?.position || [SCREEN_WIDTH/2, 200];
-            triggerHaptic('impactLight');
-            for (let i = 0; i < 3; i++) {
-                const pid = `p_${Date.now()}_${i}_${Math.random()}`;
-                ents[pid] = {
-                    position: [...pos],
-                    velocity: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6],
-                    size: 3 + Math.random() * 2,
-                    color: color || '#FFFFFF',
-                    opacity: 1,
-                    renderer: Particle,
-                };
-            }
-            if (Math.random() < 0.18) {
-                const types = ['WIDE', 'MULTI', 'PLUS3', 'FIRE', 'LIFE'];
-                const type = types[Math.floor(Math.random() * types.length)] as any;
-                const id = `powerup_${Date.now()}_${Math.random()}`;
-                ents[id] = { position: [...pos], size: [30, 30], type, renderer: PowerUpComponent };
-            }
-        }
-    }
-
-    // 4. Update non-physics entities (Powerups, Particles, Weapons)
-    Object.keys(ents).forEach(k => {
-        if (k.startsWith('powerup_')) {
-            const pu = ents[k];
-            pu.position[1] += 3;
-            const dx = Math.abs(pu.position[0] - ents.paddle?.position[0]);
-            const dy = Math.abs(pu.position[1] - ents.paddle?.position[1]);
-            if (dx < ents.paddle?.size[0] / 2 && dy < ents.paddle?.size[1] / 2) {
-                if (pu.type === 'WIDE' || pu.type === 'MULTI' || pu.type === 'PLUS3') {
-                    NativePhysics.applyPowerUp(pu.type);
-                } else if (pu.type === 'FIRE') {
-                    if (ents.scoreBoard) ents.scoreBoard.powerUpState.FIRE = Date.now() + 10000;
-                } else if (pu.type === 'LIFE') {
-                    if (ents.scoreBoard && ents.scoreBoard.lives < 5) ents.scoreBoard.lives += 1;
-                }
-                delete ents[k];
-                playSound('power_up');
-                triggerHaptic('impactMedium');
-            }
-            if (pu.position[1] > SCREEN_HEIGHT) delete ents[k];
-        } else if (k.startsWith('p_')) {
-            const p = ents[k];
-            p.position[0] += p.velocity[0];
-            p.position[1] += p.velocity[1];
-            p.opacity -= 0.1;
-            if (p.opacity <= 0) delete ents[k];
-        } else if (k.startsWith('missile_')) {
-            const m = ents[k];
-            const dx = m.target[0] - m.position[0];
-            const dy = m.target[1] - m.position[1];
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 25) {
-                 delete ents[k];
-                 playSound('explosion');
-                 NativePhysics.triggerExplosion(m.target[0], m.target[1], 75.0);
-                 triggerHaptic('impactHeavy');
-                 if (ents.scoreBoard) ents.scoreBoard.shake += 10;
-            } else {
-                m.position[0] += dx * 0.1;
-                m.position[1] += dy * 0.1;
-            }
-        }
-    });
-
-    // 5. Win Check
-    const remaining = Object.keys(ents).filter(k => k.startsWith('brick_') && ents[k].status).length;
-    if (remaining === 0 && ents.scoreBoard && running) {
-        onEventRef.current?.({ type: 'win', score: ents.scoreBoard.score, timeTaken: Math.floor((Date.now() - ents.scoreBoard.startTime)/1000), maxScore: ents.scoreBoard.maxScore });
-    }
-
-    // Clear current data after processing
-    lastNativeUpdate.current = null;
-    return ents;
-  }).current;
 
   useEffect(() => {
     if (waitingToStart && !paused) {
@@ -340,10 +166,10 @@ export default function App() {
   }, [adsReady]);
 
   const loadProgress = async () => {
-try {
+    try {
       const savedLevels = await AsyncStorage.getItem('@unlocked_levels');
       const savedScores = await AsyncStorage.getItem('@high_scores');
-      
+
       let parsedLevels: number[] = [];
       if (savedLevels) {
         parsedLevels = JSON.parse(savedLevels);
@@ -351,7 +177,7 @@ try {
 
       setUnlockedLevels(parsedLevels.length > 0 ? parsedLevels : [0]);
       if (savedScores) setHighScores(JSON.parse(savedScores));
-      
+
       // Load economy
       const savedEconomy = await AsyncStorage.getItem('@game_economy');
       if (savedEconomy) {
@@ -361,11 +187,11 @@ try {
         setMineStock(eco.mines !== undefined ? eco.mines : 3);
         setUnlockedThemes(eco.themes || ['theme_classic']);
         setCurrentTheme(eco.currentTheme || 'theme_classic');
-        setWeaponCounts({ 
-          missiles: eco.missiles !== undefined ? eco.missiles : 3, 
-          mines: eco.mines !== undefined ? eco.mines : 3 
+        setWeaponCounts({
+          missiles: eco.missiles !== undefined ? eco.missiles : 3,
+          mines: eco.mines !== undefined ? eco.mines : 3
         });
-        
+
         // Load Skins
         setUnlockedSkins(eco.unlockedSkins || []);
         setCurrentPaddleSkin(eco.currentPaddleSkin || null);
@@ -416,11 +242,9 @@ try {
     switch (e.type) {
       case 'game-over':
         stopSound('game_sfx');
-        NativePhysics.stop();
         setRunning(false); setGo(true); setCanRevive(true); break;
       case 'win':
         stopSound('game_sfx');
-        NativePhysics.stop();
         handleWin(e.score, e.timeTaken, e.maxScore); break;
       case 'lose-life':
         setWaitingToStart(true); break;
@@ -432,10 +256,10 @@ try {
         setWeaponCounts({ missiles: e.missiles, mines: e.mines });
         setMissileStock(e.missiles);
         setMineStock(e.mines);
-        saveProgress(unlockedLevels, highScores, { 
-          stars: starBalance, 
-          missiles: e.missiles, 
-          mines: e.mines 
+        saveProgress(unlockedLevels, highScores, {
+          stars: starBalance,
+          missiles: e.missiles,
+          mines: e.mines
         });
         break;
     }
@@ -443,13 +267,13 @@ try {
 
   // Keep the stable ref always current — runs after every render so the
   // system function never holds a stale closure over state-dependent callbacks.
-  onEventRef.current = onEvent;
+
 
   const triggerShake = (intensity: number) => {
     const val = intensity * 0.8;
     Animated.sequence([
-      Animated.timing(shakeAnim, { toValue: { x: (Math.random()-0.5)*val, y: (Math.random()-0.5)*val }, duration: 40, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: { x: (Math.random()-0.5)*val, y: (Math.random()-0.5)*val }, duration: 40, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: { x: (Math.random() - 0.5) * val, y: (Math.random() - 0.5) * val }, duration: 40, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: { x: (Math.random() - 0.5) * val, y: (Math.random() - 0.5) * val }, duration: 40, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: { x: 0, y: 0 }, duration: 40, useNativeDriver: true }),
     ]).start();
   };
@@ -468,13 +292,13 @@ try {
     } else if (currentScore >= levelMax * 0.4) {
       stars = 2;
     }
-    
+
     if (timeTaken) {
       // timeTaken is in seconds, totalPausedMs is in ms
       const adjustedTimeMs = (timeTaken * 1000) - totalPausedMs;
       setFinalTime(Math.max(1, Math.floor(adjustedTimeMs / 1000)));
     }
-    
+
     setLastStarsEarned(stars);
     const newStarBalance = starBalance + stars;
     setStarBalance(newStarBalance);
@@ -482,16 +306,16 @@ try {
     const level = FLAG_LEVELS[currentLevel];
     const levelId = level.id;
     const newScores = { ...highScores };
-    
+
     // Store score and stars in highScores using "score|stars" format
     const prevEntry = newScores[levelId] || 0;
     const prevScore = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[0]) : prevEntry;
     const prevStars = typeof prevEntry === 'string' ? parseInt(prevEntry.split('|')[1]) : 0;
-    
+
     if (currentScore > prevScore || stars > prevStars) {
       newScores[levelId] = `${Math.max(currentScore, prevScore)}|${Math.max(stars, prevStars)}` as any;
     }
-    
+
     setHighScores(newScores);
 
     let newUnlocked = [...unlockedLevels];
@@ -499,10 +323,10 @@ try {
       newUnlocked = [...unlockedLevels, currentLevel + 1];
       setUnlockedLevels(newUnlocked);
     }
-    
-    saveProgress(newUnlocked, newScores, { 
-      stars: newStarBalance, 
-      missiles: missileStock, 
+
+    saveProgress(newUnlocked, newScores, {
+      stars: newStarBalance,
+      missiles: missileStock,
       mines: mineStock,
       themes: unlockedThemes,
       currentTheme,
@@ -523,12 +347,12 @@ try {
 
   const startLevel = (index: number) => {
     setCurrentLevel(index); setShowMenu(false); setRunning(true);
-setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
+    setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     setTotalPausedMs(0); setPauseStartTime(null);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
 
     if (gameEngineRef.current) {
-      const ents = getEntities(index, currentPaddleSkin, currentBallSkin);
+      const ents = getEntities(index);
       ents.scoreBoard.waitingToStart = true;
       // Inject global weapons stock
       ents.scoreBoard.missiles = missileStock;
@@ -536,29 +360,11 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
 
-      // Initialize Native Physics
-      const brickDefs = Object.keys(ents)
-        .filter(k => k.startsWith('brick_'))
-        .map(k => {
-          const b = ents[k];
-          return {
-            id: k,
-            x: b.position[0],
-            y: b.position[1],
-            w: b.size[0],
-            h: b.size[1],
-            hp: b.hp,
-            type: b.type,
-            color: b.color,
-          };
-        });
       const initialPaddleX = ents.paddle?.position[0] || SCREEN_WIDTH / 2;
       if (ents.paddle) ents.paddle.targetX = initialPaddleX;
 
-      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25, initialPaddleX).then(() => {
-        NativePhysics.start();
-      });
-      
+      const initialPaddleY = ents.paddle?.position[1] || SCREEN_HEIGHT * 0.85;
+
       // Trigger Level Intro
       introAnim.setValue(0);
       playSound('game_sfx', true); // START BACKGROUND MUSIC
@@ -572,15 +378,14 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
 
   const launchBall = () => {
     if (waitingToStart && !paused && !showMenu && !win && !go) {
-      if (gameEngineRef.current && typeof gameEngineRef.current.dispatch === 'function') {
-        setWaitingToStart(false);
+      setWaitingToStart(false);
+      if (gameEngineRef.current) {
         gameEngineRef.current.dispatch({ type: 'launch' });
-        NativePhysics.launch();
       }
     }
   };
 
-  const togglePause = () => { 
+  const togglePause = () => {
     setPaused(p => {
       if (!p) {
         setPauseStartTime(Date.now());
@@ -589,8 +394,8 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
         setPauseStartTime(null);
       }
       return !p;
-    }); 
-    triggerHaptic('impactLight'); 
+    });
+    triggerHaptic('impactLight');
   };
 
   const reset = () => {
@@ -598,33 +403,15 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     setTotalPausedMs(0); setPauseStartTime(null);
     setWeaponCounts({ missiles: missileStock, mines: mineStock }); setWeaponMode('NORMAL');
     if (gameEngineRef.current) {
-      const ents = getEntities(currentLevel, currentPaddleSkin, currentBallSkin);
+      const ents = getEntities(currentLevel);
       ents.scoreBoard.waitingToStart = true;
       ents.scoreBoard.missiles = missileStock;
       ents.scoreBoard.mines = mineStock;
       if (ents.paddle) ents.paddle.themeId = currentTheme;
       gameEngineRef.current.swap(ents);
 
-      // Initialize Native Physics
-      const brickDefs = Object.keys(ents)
-        .filter(k => k.startsWith('brick_'))
-        .map(k => {
-          const b = ents[k];
-          return {
-            id: k,
-            x: b.position[0],
-            y: b.position[1],
-            w: b.size[0],
-            h: b.size[1],
-            hp: b.hp,
-            type: b.type,
-            color: b.color,
-          };
-        });
-      
-      NativePhysics.init(brickDefs, ents.paddle?.size[0] || SCREEN_WIDTH * 0.25).then(() => {
-        NativePhysics.start();
-      });
+      const resetPaddleX = ents.paddle?.position[0] || SCREEN_WIDTH / 2;
+      if (ents.paddle) ents.paddle.targetX = resetPaddleX;
     }
   };
 
@@ -690,7 +477,6 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
   const backToMenu = () => {
     stopSound('game_sfx');
     playSound('click');
-    NativePhysics.stop();
     setCanRevive(false);
     setShowMenu(true); setRunning(false); setWin(false); setGo(false); setPaused(false);
   };
@@ -710,7 +496,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
     if (newMode === 'MINE' && weaponCounts.mines === 0) return;
     triggerHaptic('impactLight');
     setWeaponMode(newMode);
-    
+
     if (gameEngineRef.current && typeof gameEngineRef.current.dispatch === 'function') {
       gameEngineRef.current.dispatch({ type: 'set-weapon-mode', mode: newMode });
     }
@@ -768,15 +554,10 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       return;
     }
 
-    if (starBalance < item.cost) return;
-
     const newBalance = starBalance - item.cost;
     let newMissiles = missileStock;
     let newMines = mineStock;
     let newThemes = [...unlockedThemes];
-    let newUnlockedSkins = [...unlockedSkins];
-    let newPaddleSkin = currentPaddleSkin;
-    let newBallSkin = currentBallSkin;
 
     if (item.id === 'missile_3') newMissiles += 3;
     if (item.id === 'mine_2') newMines += 2;
@@ -790,81 +571,24 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
       }
     }
 
-    if (item.type === 'SKIN_PADDLE' || item.type === 'SKIN_BALL') {
-      if (!newUnlockedSkins.includes(item.id)) newUnlockedSkins.push(item.id);
-      setUnlockedSkins(newUnlockedSkins);
-      
-      const iso = item.id.replace('PADDLE_', '').replace('BALL_', '');
-      if (item.type === 'SKIN_PADDLE') {
-        newPaddleSkin = iso;
-        setCurrentPaddleSkin(iso);
-        if (gameEngineRef.current?.state?.entities?.paddle) {
-          gameEngineRef.current.state.entities.paddle.flagSkin = iso;
-        }
-      } else {
-        newBallSkin = iso;
-        setCurrentBallSkin(iso);
-        if (gameEngineRef.current) {
-          const state = gameEngineRef.current.state;
-          Object.keys(state.entities).forEach(k => {
-            if (k.startsWith('ball_')) state.entities[k].flagSkin = iso;
-          });
-        }
-      }
-    }
-
     setStarBalance(newBalance);
     setMissileStock(newMissiles);
     setMineStock(newMines);
     setWeaponCounts({ missiles: newMissiles, mines: newMines });
 
-    saveProgress(unlockedLevels, highScores, { 
-      stars: newBalance, 
-      missiles: newMissiles, 
+    saveProgress(unlockedLevels, highScores, {
+      stars: newBalance,
+      missiles: newMissiles,
       mines: newMines,
       themes: newThemes,
-      currentTheme: item.type === 'THEME' ? item.id : currentTheme,
-      unlockedSkins: newUnlockedSkins,
-      currentPaddleSkin: newPaddleSkin,
-      currentBallSkin: newBallSkin,
+      currentTheme: item.type === 'THEME' ? item.id : currentTheme
     });
-
-    if (item.id === 'multi_3' || item.id === 'plus_3' || item.id === 'wide_paddle') {
-        const type = item.id === 'multi_3' ? 'MULTI' : (item.id === 'wide_paddle' ? 'WIDE' : 'PLUS3');
-        NativePhysics.applyPowerUp(type);
-    }
 
     triggerHaptic('notificationSuccess');
     playSound('blip_select');
   };
 
-  const handleEquipSkin = (type: 'BALL' | 'PADDLE', iso: string | null) => {
-    if (type === 'PADDLE') {
-      setCurrentPaddleSkin(iso);
-      if (gameEngineRef.current?.state?.entities?.paddle) {
-        gameEngineRef.current.state.entities.paddle.flagSkin = iso;
-      }
-    } else {
-      setCurrentBallSkin(iso);
-      if (gameEngineRef.current) {
-        const state = gameEngineRef.current.state;
-        Object.keys(state.entities).forEach(k => {
-          if (k.startsWith('ball_')) state.entities[k].flagSkin = iso;
-        });
-      }
-    }
-    saveProgress(unlockedLevels, highScores, { 
-      stars: starBalance, 
-      missiles: missileStock, 
-      mines: mineStock,
-      themes: unlockedThemes,
-      currentTheme,
-      unlockedSkins,
-      currentPaddleSkin: type === 'PADDLE' ? iso : currentPaddleSkin,
-      currentBallSkin: type === 'BALL' ? iso : currentBallSkin,
-    });
-    triggerHaptic('impactLight');
-  };
+
   const handleAcceptPrivacy = async () => {
     setPrivacyAccepted(true);
     await AsyncStorage.setItem('@privacy_accepted', 'true');
@@ -886,16 +610,16 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
         stars = parseInt(entry.split('|')[1]);
       } else {
         // Fallback for old scores
-        stars = 1; 
+        stars = 1;
       }
     }
-    
+
     // If NOT won yet, show difficulty from static record
     if (stars === 0) {
       const diff = LEVEL_DIFFICULTY[levelId] || 1;
       return (
         <View style={styles.starsRow}>
-          {[1,2,3,4,5].map(i => (
+          {[1, 2, 3, 4, 5].map(i => (
             <Text key={i} style={[styles.star, i <= diff && { color: 'rgba(255,255,255,0.2)' }]}>★</Text>
           ))}
         </View>
@@ -904,7 +628,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
 
     return (
       <View style={styles.starsRow}>
-        {[1,2,3].map(i => (
+        {[1, 2, 3].map(i => (
           <Text key={i} style={[styles.star, i <= stars && styles.starActive]}>★</Text>
         ))}
       </View>
@@ -928,7 +652,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
         {/* Game Layer */}
         <Animated.View
           style={[
-            styles.gameWrapper, 
+            styles.gameWrapper,
             showMenu && { opacity: 0 },
             { transform: shakeAnim.getTranslateTransform() }
           ]}
@@ -940,9 +664,9 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
               {(() => {
                 const FlagComponent = getFlagIcon(FLAG_LEVELS[currentLevel]?.isoCode);
                 return FlagComponent ? (
-                  <FlagComponent 
-                    width={SCREEN_WIDTH * 1.5} 
-                    height={SCREEN_HEIGHT * 1.5} 
+                  <FlagComponent
+                    width={SCREEN_WIDTH * 1.5}
+                    height={SCREEN_HEIGHT * 1.5}
                     style={{ opacity: 0.08 }} // Subtle ghost effect
                   />
                 ) : null;
@@ -953,8 +677,8 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
           <GameEngine
             ref={gameEngineRef}
             style={styles.gameContainer}
-            systems={[NativePhysicsSyncFn, MovePaddle, WeaponSystem]}
-            entities={getEntities(currentLevel, currentPaddleSkin, currentBallSkin)}
+            systems={[Physics, MovePaddle, WeaponSystem]}
+            entities={getEntities(currentLevel)}
             running={running && !paused && !win && !go && !showShop}
             onEvent={onEvent}
           />
@@ -985,9 +709,9 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
               </View>
 
               {/* Level Intro Overlay */}
-              <Animated.View 
+              <Animated.View
                 pointerEvents="none"
-                style={[styles.introOverlay, { 
+                style={[styles.introOverlay, {
                   opacity: introAnim,
                   transform: [
                     { scale: introAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) },
@@ -1039,15 +763,15 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
                     <View style={styles.boardHeaderBadge}>
                       <Text style={styles.boardHeaderTitle}>PAUSED</Text>
                     </View>
-                    
+
                     <View style={{ width: '100%', alignItems: 'center' }}>
                       <Text style={styles.pauseLevel}>{FLAG_LEVELS[currentLevel]?.name}</Text>
-                      
+
                       <View style={styles.pauseButtons}>
                         <TouchableOpacity onPress={togglePause} style={[styles.overlayBtn, styles.btnResume]}>
                           <Text style={styles.overlayBtnText}>▶  RESUME</Text>
                         </TouchableOpacity>
-                        
+
                         <View style={{ flexDirection: 'row', gap: 10 }}>
                           <TouchableOpacity onPress={reset} style={[styles.overlayBtn, styles.btnRestart, { flex: 1 }]}>
                             <Text style={styles.overlayBtnText}>↺ RESTART</Text>
@@ -1093,7 +817,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
             {/* Level Grid - Cartoon Board Style */}
             <View style={styles.boardWrapper}>
               <View style={styles.boardInner}>
-                
+
                 {/* Overlapping Title Badge */}
                 <View style={styles.boardHeaderBadge}>
                   <Text style={styles.boardHeaderTitle}>CHOOSE LEVEL</Text>
@@ -1213,7 +937,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
           </View>
         )}
 
-        
+
         {/* PRIVACY CONSENT MODAL */}
         <Modal
           visible={!privacyAccepted}
@@ -1228,10 +952,10 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
               </View>
               <Text style={styles.privacyModalTitle}>READY TO PLAY?</Text>
               <Text style={styles.privacyModalText}>
-                By playing <Text style={{ color: '#00E5FF', fontWeight: '900' }}>BRICK STRIKE</Text>, you agree to our privacy policy. 
+                By playing <Text style={{ color: '#00E5FF', fontWeight: '900' }}>BRICK STRIKE</Text>, you agree to our privacy policy.
                 We use basic analytics for high scores and Google AdMob for ads.
               </Text>
-              
+
               <TouchableOpacity onPress={openPrivacyPolicy} style={styles.privacyModalLink}>
                 <Text style={styles.privacyModalLinkText}>READ PRIVACY POLICY</Text>
               </TouchableOpacity>
@@ -1255,7 +979,7 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
 
               <View style={{ width: '100%', alignItems: 'center' }}>
                 <Text style={styles.resultEmoji}>{go ? '💀' : '🏆'}</Text>
-                
+
                 {win && (
                   <View style={styles.winDetails}>
                     <View style={styles.resultStarsRow}>
@@ -1304,9 +1028,6 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
             starBalance={starBalance}
             unlockedThemes={unlockedThemes}
             currentTheme={currentTheme}
-            unlockedSkins={unlockedSkins}
-            currentPaddleSkin={currentPaddleSkin}
-            currentBallSkin={currentBallSkin}
             onClose={() => setShowShop(false)}
             onBuy={handleBuy}
             onEquipTheme={(themeId) => {
@@ -1317,9 +1038,8 @@ setPaused(false); setWaitingToStart(true); setWin(false); setGo(false);
                   state.entities.paddle.themeId = themeId;
                 }
               }
-              saveProgress(unlockedLevels, highScores, { stars: starBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme: themeId, unlockedSkins, currentPaddleSkin, currentBallSkin });
+              saveProgress(unlockedLevels, highScores, { stars: starBalance, missiles: missileStock, mines: mineStock, themes: unlockedThemes, currentTheme: themeId });
             }}
-            onEquipSkin={handleEquipSkin}
           />
         )}
 
@@ -1716,14 +1436,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoCircle: {
-      width: 60, height: 60,
-      borderRadius: 30,
-      backgroundColor: '#4ECDC4',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 10,
-      borderWidth: 3,
-      borderColor: '#FFF',
+    width: 60, height: 60,
+    borderRadius: 30,
+    backgroundColor: '#4ECDC4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 3,
+    borderColor: '#FFF',
   },
   gameLogoSub: { fontSize: 28 },
   gameLogo: {
@@ -1805,7 +1525,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#00E5FF', // Neon Cyan
     overflow: 'visible',
-    marginTop: 20, 
+    marginTop: 20,
     shadowColor: '#00E5FF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
@@ -1924,7 +1644,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },
-  
+
   // Bottom Controls
   boardBottomBar: {
     flexDirection: 'row',

@@ -8,11 +8,11 @@ interface BallProps {
   color?: string;
   trail?: [number, number][];
   isFire?: boolean;
-  flagSkin?: string | null;
+
 }
 
 const Ball: React.FC<BallProps> = ({ 
-  radius, position, color = '#FFD54F', trail, isFire, flagSkin = null 
+  radius, position, color = '#FFD54F', trail, isFire 
 }) => {
   const x = position[0] - radius;
   const y = position[1] - radius;
@@ -56,12 +56,7 @@ const Ball: React.FC<BallProps> = ({
 
       {/* Main Ball Body */}
       <View style={baseStyle}>
-          {/* Flag Skin Background */}
-          {flagSkin && (
-            <View style={[StyleSheet.absoluteFillObject, { borderRadius: radius, overflow: 'hidden' }]}>
-              <FlagMiniPreview isoCode={flagSkin} />
-            </View>
-          )}
+
 
           {/* Main Gloss Highlight */}
           <View style={[styles.gloss, { borderRadius: radius }]} />
